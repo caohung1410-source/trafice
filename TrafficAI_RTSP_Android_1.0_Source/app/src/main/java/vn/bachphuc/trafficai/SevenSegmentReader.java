@@ -30,13 +30,16 @@ public final class SevenSegmentReader {
         List<RectF> candidates = new ArrayList<>();
         candidates.add(clamp(new RectF(
                 light.right + h * 0.05f, light.top - h * 0.25f,
-                light.right + h * 3.6f, light.bottom + h * 0.25f), frame));
+                light.right + h * 5.2f, light.bottom + h * 0.45f), frame));
         candidates.add(clamp(new RectF(
-                light.left - h * 3.6f, light.top - h * 0.25f,
-                light.left - h * 0.05f, light.bottom + h * 0.25f), frame));
+                light.left - h * 5.2f, light.top - h * 0.25f,
+                light.left - h * 0.05f, light.bottom + h * 0.45f), frame));
         candidates.add(clamp(new RectF(
-                light.left - h * 1.4f, light.bottom + h * 0.02f,
-                light.right + h * 1.4f, light.bottom + h * 1.65f), frame));
+                light.left - h * 2.0f, light.bottom + h * 0.02f,
+                light.right + h * 2.0f, light.bottom + h * 2.2f), frame));
+        candidates.add(clamp(new RectF(
+                light.left - h * 2.8f, light.top - h * 0.40f,
+                light.right + h * 2.8f, light.bottom + h * 2.0f), frame));
 
         Result best = Result.none();
         for (RectF candidate : candidates) {
@@ -44,7 +47,7 @@ public final class SevenSegmentReader {
             Result current = readCandidate(frame, candidate, state);
             if (current.confidence > best.confidence) best = current;
         }
-        return best.confidence >= 0.50f ? best : Result.none();
+        return best.confidence >= 0.44f ? best : Result.none();
     }
 
     private Result readCandidate(Bitmap frame, RectF roi, TrafficState state) {
@@ -61,7 +64,7 @@ public final class SevenSegmentReader {
                 if (on) lit++;
             }
         }
-        if (lit < 22 || lit > MASK_W * MASK_H * 0.45f) return Result.none();
+        if (lit < 14 || lit > MASK_W * MASK_H * 0.50f) return Result.none();
 
         int[] bounds = litBounds(mask);
         if (bounds == null) return Result.none();
@@ -192,10 +195,10 @@ public final class SevenSegmentReader {
         int b = Color.blue(color);
         int max = Math.max(r, Math.max(g, b));
         int min = Math.min(r, Math.min(g, b));
-        if (max < 115 || max - min < 25) return false;
-        if (state == TrafficState.RED) return r > 140 && r > g * 1.16f && r > b * 1.18f;
-        if (state == TrafficState.GREEN) return g > 125 && g > r * 1.06f && g > b * 1.02f;
-        if (state == TrafficState.YELLOW) return r > 130 && g > 105 && b < Math.min(r, g) * 0.82f;
+        if (max < 100 || max - min < 20) return false;
+        if (state == TrafficState.RED) return r > 122 && r > g * 1.12f && r > b * 1.14f;
+        if (state == TrafficState.GREEN) return g > 112 && g > r * 1.04f && g > b;
+        if (state == TrafficState.YELLOW) return r > 118 && g > 96 && b < Math.min(r, g) * 0.86f;
         return max > 185 && max - min > 45;
     }
 

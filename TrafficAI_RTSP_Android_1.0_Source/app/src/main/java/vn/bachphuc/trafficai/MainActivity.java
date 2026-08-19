@@ -2,6 +2,7 @@ package vn.bachphuc.trafficai;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
+import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -36,9 +37,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends Activity implements TextToSpeech.OnInitListener {
-    private static final long FRAME_INTERVAL_MS = 360L;
-    private static final int CAPTURE_WIDTH = 960;
-    private static final int CAPTURE_HEIGHT = 540;
+    private static final long FRAME_INTERVAL_MS = 280L;
+    private static final int CAPTURE_WIDTH = 1280;
+    private static final int CAPTURE_HEIGHT = 720;
 
     private PlayerView playerView;
     private DetectionOverlayView overlayView;
@@ -75,6 +76,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Integer lastSpokenCountdown;
     private long lastSignalSpeechAt;
     private long lastSignSpeechAt;
+    private long lastCountdownSpeechAt;
 
     private final Runnable framePump = new Runnable() {
         @Override
@@ -132,6 +134,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         Button mainStream = findViewById(R.id.mainStreamButton);
         Button connect = findViewById(R.id.connectButton);
         Button disconnect = findViewById(R.id.disconnectButton);
+        Button testSpeech = findViewById(R.id.testSpeechButton);
 
         toggleSettings.setOnClickListener(view -> {
             boolean hidden = settingsPanel.getVisibility() == View.GONE;
@@ -143,6 +146,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         connect.setOnClickListener(view -> connectRtsp());
         disconnect.setOnClickListener(view -> disconnectRtsp());
         initAiButton.setOnClickListener(view -> initializeAi());
+        testSpeech.setOnClickListener(view -> {
+            if (ttsReady) {
+                speak("Kiểm tra giọng nói. Đèn đỏ, còn mười giây. Biển báo giới hạn tốc độ bốn mươi.",
+                        TextToSpeech.QUEUE_FLUSH);
+            } else {
+                Toast.makeText(this,
+                        "Chưa có giọng đọc. Hãy chọn Google Speech Services và tải giọng Tiếng Việt.",
+                        Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void setImouSubtype(int subtype) {
@@ -312,30 +325,38 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (!ttsReady) return;
         long now = SystemClock.elapsedRealtime();
         String signal = result.lightState == TrafficState.UNKNOWN ? "" : result.lightState.vi;
-        if (!signal.isEmpty() && !signal.equals(lastSpokenSignal) && now - lastSignalSpeechAt > 1_200) {
-            speak("Đèn " + signal.toLowerCase(new Locale("vi", "VN")), TextToSpeech.QUEUE_FLUSH);
-            lastSpokenSignal = signal;
-            lastSpokenCountdown = null;
-            lastSignalSpeechAt = now;
+        if (!result.signText.isEmpty()
+                && (!result.signText.equals(lastSpokenSign) || now - lastSignSpeechAt > 12_000)) {
+            speak("Biển báo, " + result.signText, TextToSpeech.QUEUE_FLUSH);
+            lastSpokenSign = result.signText;
+            lastSignSpeechAt = now;
+            return;
         }
 
         Integer number = result.countdown;
-        if (number != null && !number.equals(lastSpokenCountdown)) {
-            boolean read = number <= 5
-                    || lastSpokenCountdown == null
-                    || Math.abs(lastSpokenCountdown - number) >= 3;
-            if (read) {
-                String phrase = number <= 5 ? String.valueOf(number) : "Còn " + number + " giây";
-                speak(phrase, TextToSpeech.QUEUE_ADD);
-                lastSpokenCountdown = number;
-            }
+        if (number != null && !signal.isEmpty()
+                && !number.equals(lastSpokenCountdown)
+                && now - lastCountdownSpeechAt >= 650L) {
+            String color = signal.toLowerCase(new Locale("vi", "VN"));
+            String phrase = number <= 5
+                    ? color + ", " + number
+                    : "Đèn " + color + ", còn " + number + " giây";
+            // Luôn bỏ câu cũ để giọng đọc không bị chậm hơn đồng hồ thật.
+            speak(phrase, TextToSpeech.QUEUE_FLUSH);
+            lastSpokenSignal = signal;
+            lastSpokenCountdown = number;
+            lastSignalSpeechAt = now;
+            lastCountdownSpeechAt = now;
+            return;
         }
 
-        if (!result.signText.isEmpty()
-                && (!result.signText.equals(lastSpokenSign) || now - lastSignSpeechAt > 12_000)) {
-            speak(result.signText, TextToSpeech.QUEUE_ADD);
-            lastSpokenSign = result.signText;
-            lastSignSpeechAt = now;
+        if (!signal.isEmpty() && !signal.equals(lastSpokenSignal)
+                && now - lastSignalSpeechAt > 1_000L) {
+            speak("Đèn " + signal.toLowerCase(new Locale("vi", "VN")),
+                    TextToSpeech.QUEUE_FLUSH);
+            lastSpokenSignal = signal;
+            lastSpokenCountdown = null;
+            lastSignalSpeechAt = now;
         }
     }
 
@@ -352,6 +373,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lastSpokenSignal = "";
         lastSpokenSign = "";
         lastSpokenCountdown = null;
+        lastCountdownSpeechAt = 0;
     }
 
     private void startFramePump() {
@@ -382,10 +404,32 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
-            int language = textToSpeech.setLanguage(new Locale("vi", "VN"));
-            textToSpeech.setSpeechRate(0.82f);
+            textToSpeech.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build());
+            int language = textToSpeech.setLanguage(Locale.forLanguageTag("vi-VN"));
+            if (language == TextToSpeech.LANG_MISSING_DATA
+                    || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                language = textToSpeech.setLanguage(new Locale("vi"));
+            }
+            if (language == TextToSpeech.LANG_MISSING_DATA
+                    || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                language = textToSpeech.setLanguage(Locale.getDefault());
+            }
+            textToSpeech.setSpeechRate(1.02f);
+            textToSpeech.setPitch(1.0f);
             ttsReady = language != TextToSpeech.LANG_MISSING_DATA
                     && language != TextToSpeech.LANG_NOT_SUPPORTED;
+            if (ttsReady) {
+                mainHandler.postDelayed(() -> {
+                    if (!destroyed) speak("Đã bật cảnh báo giao thông", TextToSpeech.QUEUE_FLUSH);
+                }, 450L);
+            } else {
+                Toast.makeText(this,
+                        "Máy chưa có dữ liệu giọng nói. Bấm THỬ GIỌNG sau khi cài giọng Tiếng Việt.",
+                        Toast.LENGTH_LONG).show();
+            }
         }
     }
 

@@ -22,7 +22,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="TrafficAI RTSP 1.0"
+                android:text="TrafficAI RTSP 1.1"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp"
                 android:textStyle="bold" />
@@ -116,7 +116,7 @@
             android:layout_height="46dp"
             android:hint="Đường dẫn RTSP"
             android:singleLine="true"
-            android:text="/cam/realmonitor?channel=1&amp;subtype=1&amp;unicast=true&amp;proto=Onvif"
+            android:text="/cam/realmonitor?channel=1&amp;subtype=0&amp;unicast=true&amp;proto=Onvif"
             android:textColor="#FFFFFF"
             android:textColorHint="#7890A8"
             android:textSize="12sp" />
@@ -176,6 +176,12 @@
                 android:layout_weight="1"
                 android:text="TẢI / MỞ AI" />
         </LinearLayout>
+
+        <Button
+            android:id="@+id/testSpeechButton"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="THỬ GIỌNG CẢNH BÁO" />
     </LinearLayout>
 
     <TextView

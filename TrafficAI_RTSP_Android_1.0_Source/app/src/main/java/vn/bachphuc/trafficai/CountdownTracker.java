@@ -12,9 +12,9 @@ import java.util.Map;
  */
 public final class CountdownTracker {
     private static final long SIGNAL_WINDOW_MS = 1_200;
-    private static final long DIGIT_WINDOW_MS = 900;
-    private static final long LOST_DIGIT_MS = 1_250;
-    private static final int MIN_SIGNAL_VOTES = 3;
+    private static final long DIGIT_WINDOW_MS = 1_250;
+    private static final long LOST_DIGIT_MS = 1_800;
+    private static final int MIN_SIGNAL_VOTES = 2;
     private static final int MIN_DIGIT_VOTES = 2;
 
     private final Deque<SignalSample> signals = new ArrayDeque<>();
@@ -32,7 +32,7 @@ public final class CountdownTracker {
             float digitConfidence,
             long nowMs) {
         if (observedState == null) observedState = TrafficState.UNKNOWN;
-        if (stateConfidence >= 0.48f && observedState != TrafficState.UNKNOWN) {
+        if (stateConfidence >= 0.42f && observedState != TrafficState.UNKNOWN) {
             signals.addLast(new SignalSample(observedState, nowMs));
         }
         trimSignals(nowMs);
@@ -47,7 +47,7 @@ public final class CountdownTracker {
         }
 
         boolean stopped = false;
-        if (visibleNumber != null && digitConfidence >= 0.48f) {
+        if (visibleNumber != null && digitConfidence >= 0.42f && !stateChanged) {
             if (visibleNumber == 0) {
                 resetDigits();
                 stopped = true;
@@ -56,6 +56,11 @@ public final class CountdownTracker {
                 digits.addLast(new DigitSample(visibleNumber, nowMs));
                 trimDigits(nowMs);
                 Integer candidate = voteDigit();
+                if (candidate == null && digitConfidence >= 0.78f) {
+                    // Ở luồng 1280×720, một lượt AI có thể lâu gần một giây; cho phép
+                    // một quan sát rất rõ thay vì bắt buộc nhìn cùng con số hai lần.
+                    candidate = visibleNumber;
+                }
                 if (candidate != null && isPlausible(candidate, nowMs)) {
                     acceptedNumber = candidate;
                     lastAcceptedAt = nowMs;

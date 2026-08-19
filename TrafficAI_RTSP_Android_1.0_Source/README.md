@@ -1,8 +1,13 @@
-# TrafficAI RTSP 1.0
+# TrafficAI RTSP 1.1
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
 
-## Những gì bản 1.0 đã có
+## Những gì bản 1.1 đã có
+
+- Chụp khung AI 1280×720 và mặc định dùng luồng chính để giữ chi tiết ở khoảng cách hai hàng xe.
+- Dò phóng đại luân phiên ba vùng trái/giữa/phải cho cả đèn và biển báo xa.
+- Dùng hai model độc lập để nhận đèn: COCO traffic-light và lớp Green/Red Light của model Việt Nam.
+- Đọc cảnh báo theo cụm, ví dụ `Đèn đỏ, còn 12 giây`; có nút **THỬ GIỌNG CẢNH BÁO**.
 
 - Phát RTSP bằng Android Media3, hỗ trợ BASIC/DIGEST authentication, UDP unicast và RTP-over-RTSP/TCP.
 - Preset IMOU/Dahua cho `subtype=1` (nhẹ, nên dùng cho AI) và `subtype=0` (luồng chính).
@@ -20,8 +25,8 @@
 
 1. Điện thoại và camera phải nhìn thấy nhau trong cùng LAN/Wi-Fi, hoặc RTSP đã được định tuyến/VPN đúng cách.
 2. Nhập `IP camera`, port `554`, user `admin`, mật khẩu/Safety Code.
-3. Giữ đường dẫn mặc định:
-   `/cam/realmonitor?channel=1&subtype=1&unicast=true&proto=Onvif`
+3. Để nhận đèn/biển ở xa, giữ đường dẫn luồng chính mặc định:
+   `/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif`
 4. Giữ `RTP/TCP` để tương thích tốt hơn với IMOU, sau đó bấm **KẾT NỐI**.
 5. Bấm **TẢI / MỞ AI**. Lần đầu ứng dụng tải khoảng 50 MB model; các lần sau dùng bản lưu trong máy.
 6. Khi RTSP đã phát và AI báo đủ ba lõi `OK`, kết quả đèn, số giây và biển báo sẽ hiện bên dưới video và được đọc bằng tiếng Việt.

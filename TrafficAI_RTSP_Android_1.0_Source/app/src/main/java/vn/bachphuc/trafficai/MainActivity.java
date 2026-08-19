@@ -191,8 +191,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     text(pathInput));
 
             RtspMediaSource.Factory factory = new RtspMediaSource.Factory()
-                    .setTimeoutMs(8_000);
-            if (tcpCheck.isChecked()) factory.setForceUseRtpTcp();
+                    .setTimeoutMs(8_000)
+                    .setForceUseRtpTcp(tcpCheck.isChecked());
             MediaItem item = MediaItem.fromUri(Uri.parse(url));
             MediaSource source = factory.createMediaSource(item);
 

@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 
 import java.io.File;
@@ -99,7 +100,12 @@ public final class YoloDetector implements AutoCloseable {
 
         letterboxCanvas.drawColor(Color.BLACK);
         RectF dst = new RectF(padX, padY, padX + drawW, padY + drawH);
-        letterboxCanvas.drawBitmap(source, region, dst, bitmapPaint);
+        Rect src = new Rect(
+                Math.max(0, (int) Math.floor(region.left)),
+                Math.max(0, (int) Math.floor(region.top)),
+                Math.min(source.getWidth(), (int) Math.ceil(region.right)),
+                Math.min(source.getHeight(), (int) Math.ceil(region.bottom)));
+        letterboxCanvas.drawBitmap(source, src, dst, bitmapPaint);
         letterbox.getPixels(pixels, 0, INPUT, 0, 0, INPUT, INPUT);
 
         inputBuffer.clear();

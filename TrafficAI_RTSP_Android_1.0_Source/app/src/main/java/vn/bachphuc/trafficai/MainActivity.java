@@ -1,7 +1,12 @@
 package vn.bachphuc.trafficai;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Bundle;
@@ -34,12 +39,17 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends Activity implements TextToSpeech.OnInitListener {
+    private static final int LOCATION_PERMISSION_REQUEST = 1201;
     private static final long FRAME_INTERVAL_MS = 280L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
+    private static final Pattern SPEED_LIMIT_PATTERN = Pattern.compile(
+            "(?i)giới hạn tốc độ\\s+(\\d{1,3})");
 
     private PlayerView playerView;
     private DetectionOverlayView overlayView;
@@ -56,8 +66,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private TextView lightResult;
     private TextView countdownResult;
     private TextView signResult;
+    private TextView speedResult;
+    private TextView speedLimitResult;
     private ProgressBar modelProgress;
     private Button initAiButton;
+    private Button mapButton;
 
     private ExoPlayer player;
     private ModelRepository modelRepository;
@@ -77,6 +90,18 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private long lastSignalSpeechAt;
     private long lastSignSpeechAt;
     private long lastCountdownSpeechAt;
+    private long overSpeedSince;
+    private long lastOverSpeedSpeechAt;
+
+    private LocationManager locationManager;
+    private Location lastLocation;
+    private double smoothedSpeedKmh;
+    private int currentSpeedKmh;
+    private int speedLimitKmh;
+    private OfflineGpsView mapView;
+    private boolean mapVisible;
+
+    private final LocationListener locationListener = this::applyLocation;
 
     private final Runnable framePump = new Runnable() {
         @Override
@@ -105,6 +130,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         } else {
             setStatus("Giao diện sẵn sàng • lần đầu cần tải khoảng 50 MB model AI");
         }
+        CarTelemetryStore.updateConnection(false, false);
+        requestGpsPermission();
         startFramePump();
     }
 
@@ -124,8 +151,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lightResult = findViewById(R.id.lightResult);
         countdownResult = findViewById(R.id.countdownResult);
         signResult = findViewById(R.id.signResult);
+        speedResult = findViewById(R.id.speedResult);
+        speedLimitResult = findViewById(R.id.speedLimitResult);
         modelProgress = findViewById(R.id.modelProgress);
         initAiButton = findViewById(R.id.initAiButton);
+        mapButton = findViewById(R.id.mapButton);
+        mapView = findViewById(R.id.mapView);
     }
 
     private void bindActions() {
@@ -135,6 +166,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         Button connect = findViewById(R.id.connectButton);
         Button disconnect = findViewById(R.id.disconnectButton);
         Button testSpeech = findViewById(R.id.testSpeechButton);
+        Button limit40 = findViewById(R.id.limit40Button);
+        Button limit50 = findViewById(R.id.limit50Button);
+        Button limit60 = findViewById(R.id.limit60Button);
+        Button limit80 = findViewById(R.id.limit80Button);
 
         toggleSettings.setOnClickListener(view -> {
             boolean hidden = settingsPanel.getVisibility() == View.GONE;
@@ -146,6 +181,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         connect.setOnClickListener(view -> connectRtsp());
         disconnect.setOnClickListener(view -> disconnectRtsp());
         initAiButton.setOnClickListener(view -> initializeAi());
+        mapButton.setOnClickListener(view -> toggleMap());
+        limit40.setOnClickListener(view -> setSpeedLimit(40, "Đặt thủ công"));
+        limit50.setOnClickListener(view -> setSpeedLimit(50, "Đặt thủ công"));
+        limit60.setOnClickListener(view -> setSpeedLimit(60, "Đặt thủ công"));
+        limit80.setOnClickListener(view -> setSpeedLimit(80, "Đặt thủ công"));
         testSpeech.setOnClickListener(view -> {
             if (ttsReady) {
                 speak("Kiểm tra giọng nói. Đèn đỏ, còn mười giây. Biển báo giới hạn tốc độ bốn mươi.",
@@ -176,15 +216,18 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 if (state == Player.STATE_BUFFERING) {
                     setStatus("Đang kết nối/buffer RTSP…");
                 } else if (state == Player.STATE_READY) {
+                    CarTelemetryStore.updateConnection(true, aiCoordinator != null);
                     setStatus("RTSP đã kết nối • video đang chạy"
                             + (aiCoordinator == null ? " • AI chưa mở" : " • AI đang phân tích"));
                 } else if (state == Player.STATE_ENDED) {
+                    CarTelemetryStore.updateConnection(false, aiCoordinator != null);
                     setStatus("Luồng RTSP đã kết thúc");
                 }
             }
 
             @Override
             public void onPlayerError(PlaybackException error) {
+                CarTelemetryStore.updateConnection(false, aiCoordinator != null);
                 setStatus("Lỗi RTSP: " + error.getErrorCodeName());
                 Toast.makeText(MainActivity.this,
                         "Không mở được camera. Kiểm tra IP, tài khoản, H.264 và cùng mạng Wi-Fi.",
@@ -228,6 +271,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void disconnectRtsp() {
         player.stop();
         player.clearMediaItems();
+        CarTelemetryStore.updateConnection(false, aiCoordinator != null);
         if (aiCoordinator != null) aiCoordinator.reset();
         resetUiResults();
         setStatus("Đã ngắt camera");
@@ -255,6 +299,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     return;
                 }
                 aiCoordinator = ready;
+                CarTelemetryStore.updateConnection(
+                        player != null && player.getPlaybackState() == Player.STATE_READY, true);
                 runOnUiThread(() -> {
                     if (destroyed) return;
                     aiBadge.setText("AI: SẴN SÀNG");
@@ -304,6 +350,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void applyAiResult(AiResult result) {
         if (destroyed) return;
+        CarTelemetryStore.updateAi(result);
+        updateLimitFromSign(result);
         overlayView.setResult(result, CAPTURE_WIDTH, CAPTURE_HEIGHT);
         aiBadge.setText("AI: " + result.inferenceMs + " ms");
 
@@ -363,6 +411,127 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void speak(String text, int queueMode) {
         if (!ttsReady || textToSpeech == null) return;
         textToSpeech.speak(text, queueMode, null, "trafficai-" + SystemClock.elapsedRealtime());
+    }
+
+    private void toggleMap() {
+        mapVisible = !mapVisible;
+        mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
+        playerView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        mapButton.setText(mapVisible ? "CAMERA" : "BẢN ĐỒ");
+        if (mapVisible && lastLocation != null) updateMapPosition(lastLocation);
+    }
+
+    private void requestGpsPermission() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startGps();
+            return;
+        }
+        requestPermissions(new String[]{
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+        }, LOCATION_PERMISSION_REQUEST);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LOCATION_PERMISSION_REQUEST
+                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startGps();
+        } else if (requestCode == LOCATION_PERMISSION_REQUEST) {
+            speedResult.setText("GPS\nCHƯA CẤP QUYỀN");
+        }
+    }
+
+    private void startGps() {
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (locationManager == null
+                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) return;
+        try {
+            locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER, 500L, 0f, locationListener);
+            speedResult.setText("GPS\nĐANG TÌM");
+        } catch (Throwable error) {
+            speedResult.setText("GPS\nKHÔNG SẴN SÀNG");
+        }
+    }
+
+    private void applyLocation(Location location) {
+        if (destroyed || location == null) return;
+        lastLocation = location;
+        if (mapVisible) updateMapPosition(location);
+        if (!location.hasSpeed()) return;
+        if (location.hasAccuracy() && location.getAccuracy() > 45f) return;
+        if (location.hasSpeedAccuracy()
+                && location.getSpeedAccuracyMetersPerSecond() > 5f) return;
+
+        double rawKmh = Math.max(0d, location.getSpeed() * 3.6d);
+        if (rawKmh < 2.0d) rawKmh = 0d;
+        smoothedSpeedKmh = smoothedSpeedKmh == 0d
+                ? rawKmh : smoothedSpeedKmh * 0.62d + rawKmh * 0.38d;
+        currentSpeedKmh = Math.max(0, (int) Math.round(smoothedSpeedKmh));
+        speedResult.setText("TỐC ĐỘ GPS\n" + currentSpeedKmh + " km/h");
+        CarTelemetryStore.updateSpeed(currentSpeedKmh);
+        evaluateOverSpeed();
+    }
+
+    private void updateMapPosition(Location location) {
+        if (mapView == null || location == null) return;
+        mapView.updateLocation(
+                location.getLatitude(),
+                location.getLongitude(),
+                location.hasBearing() ? location.getBearing() : 0f,
+                currentSpeedKmh);
+    }
+
+    private void updateLimitFromSign(AiResult result) {
+        if (result == null || result.signConfidence < 0.50f || result.signText == null) return;
+        String text = result.signText.trim();
+        if (text.toLowerCase(new Locale("vi", "VN")).startsWith("hết giới hạn tốc độ")) {
+            setSpeedLimit(0, "Biển hết hạn chế");
+            return;
+        }
+        Matcher matcher = SPEED_LIMIT_PATTERN.matcher(text);
+        if (!matcher.find()) return;
+        int detected;
+        try {
+            detected = Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException error) {
+            return;
+        }
+        if (detected >= 10 && detected <= 130 && detected != speedLimitKmh) {
+            setSpeedLimit(detected, "Biển báo AI");
+            speak("Đã nhận giới hạn tốc độ " + detected, TextToSpeech.QUEUE_ADD);
+        }
+    }
+
+    private void setSpeedLimit(int value, String source) {
+        speedLimitKmh = Math.max(0, value);
+        speedLimitResult.setText(speedLimitKmh > 0
+                ? "GIỚI HẠN\n" + speedLimitKmh + " km/h"
+                : "GIỚI HẠN\n—");
+        CarTelemetryStore.updateLimit(speedLimitKmh, source);
+        overSpeedSince = 0L;
+    }
+
+    private void evaluateOverSpeed() {
+        long now = SystemClock.elapsedRealtime();
+        if (speedLimitKmh <= 0 || currentSpeedKmh <= speedLimitKmh + 5) {
+            overSpeedSince = 0L;
+            return;
+        }
+        if (overSpeedSince == 0L) overSpeedSince = now;
+        if (now - overSpeedSince >= 1_800L && now - lastOverSpeedSpeechAt >= 12_000L) {
+            speak("Bạn đang chạy " + currentSpeedKmh + ", giới hạn "
+                    + speedLimitKmh + ", hãy giảm tốc độ", TextToSpeech.QUEUE_FLUSH);
+            lastOverSpeedSpeechAt = now;
+        }
     }
 
     private void resetUiResults() {
@@ -450,6 +619,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         destroyed = true;
         stopFramePump();
         frameBusy.set(false);
+        if (locationManager != null) {
+            locationManager.removeUpdates(locationListener);
+            locationManager = null;
+        }
         if (playerView != null) playerView.setPlayer(null);
         if (player != null) {
             player.release();
@@ -470,6 +643,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             textToSpeech.shutdown();
             textToSpeech = null;
         }
+        mapView = null;
         worker.shutdown();
         super.onDestroy();
     }

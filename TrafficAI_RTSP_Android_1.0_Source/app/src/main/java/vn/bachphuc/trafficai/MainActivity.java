@@ -26,6 +26,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.OptIn;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -209,6 +210,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void initPlayer() {
         player = new ExoPlayer.Builder(this).build();
+        // Camera chỉ cung cấp hình cho AI. Tắt chọn audio track và đặt volume 0 để mic
+        // camera không phát ra loa, không che giọng TTS cảnh báo.
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters()
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                .build());
+        player.setVolume(0f);
         playerView.setPlayer(player);
         player.addListener(new Player.Listener() {
             @Override
@@ -217,7 +225,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     setStatus("Đang kết nối/buffer RTSP…");
                 } else if (state == Player.STATE_READY) {
                     CarTelemetryStore.updateConnection(true, aiCoordinator != null);
-                    setStatus("RTSP đã kết nối • video đang chạy"
+                    setStatus("RTSP đã kết nối • mic camera đã tắt • video đang chạy"
                             + (aiCoordinator == null ? " • AI chưa mở" : " • AI đang phân tích"));
                 } else if (state == Player.STATE_ENDED) {
                     CarTelemetryStore.updateConnection(false, aiCoordinator != null);

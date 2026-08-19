@@ -1,4 +1,5 @@
 import vn.bachphuc.trafficai.CountdownTracker;
+import vn.bachphuc.trafficai.RoadGeometryPrior;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
 import vn.bachphuc.trafficai.TrafficState;
 
@@ -29,6 +30,20 @@ public final class PureLogicSelfTest {
         require(changed.state == TrafficState.GREEN, "Cần nhận đổi màu đèn");
         require(changed.visibleNumber != null && changed.visibleNumber == 8,
                 "Đổi màu phải bỏ số cũ và nhận số mới có độ tin cậy cao");
+
+        float rightSignal = RoadGeometryPrior.trafficLightEvidence(.82f, .40f);
+        float lowRoadSignal = RoadGeometryPrior.trafficLightEvidence(.50f, .82f);
+        require(rightSignal > lowRoadSignal,
+                "Đèn trên cột bên phải phải được ưu tiên hơn vùng thấp giữa làn xe");
+        require(RoadGeometryPrior.trafficLightEvidence(.50f, .18f) > .80f,
+                "Đèn treo ngang phía trên giữa ảnh phải được giữ lại");
+        require(RoadGeometryPrior.trafficSignEvidence(.82f, .48f)
+                        > RoadGeometryPrior.trafficSignEvidence(.50f, .86f),
+                "Biển bên phải ở cao độ hợp lý phải được ưu tiên");
+        require(RoadGeometryPrior.trafficSignEvidence(.18f, .38f) > .30f,
+                "Không được cắt cứng biển nhắc lại bên trái");
+        require(RoadGeometryPrior.adjustConfidence(.20f, 1f) <= .20f,
+                "Prior không được tự nâng phát hiện yếu");
 
         System.out.println("PureLogicSelfTest: PASS");
     }

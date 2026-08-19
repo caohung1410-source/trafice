@@ -1,6 +1,16 @@
-# TrafficAI RTSP 1.2.2 • Android Auto thử nghiệm cá nhân
+# TrafficAI RTSP 1.3 • Geometry + Audio + Android Auto
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bổ sung trong bản 1.3
+
+- Tắt hẳn audio track và volume của luồng RTSP để tiếng mic camera không che giọng cảnh báo.
+- Mã hóa các chiều cao lắp đặt trong QCVN 41:2024/BGTVT thành prior hình học mềm: ưu tiên cột bên phải và vùng treo cao, vẫn giữ biển/đèn giữa hoặc bên trái.
+- Tile phóng đại bên phải chạy 50% số lượt; đèn trên cần vươn vẫn được nhận từ full-frame và tile giữa.
+- Khi model và phân tích màu kết luận ngược nhau, không đọc màu đèn đó; đèn xanh cyan được chấp nhận tốt hơn.
+- Bổ sung icon Car App và quyền `NAVIGATION_TEMPLATES` còn thiếu trong manifest Android Auto.
+
+Chiều cao thực không thể đổi chính xác thành tọa độ pixel nếu chưa hiệu chuẩn độ cao/góc camera, tiêu cự và khoảng cách tới cột. Vì vậy bản này chỉ dùng số liệu làm prior, không loại cứng các vùng khác.
 
 ## Bổ sung trong bản 1.2 Auto Test
 
@@ -82,9 +92,11 @@ sẵn nên có thể cài trực tiếp trên điện thoại Android 8.0 trở 
 
 1. Cài APK debug lên điện thoại và cấp quyền vị trí **Chính xác**.
 2. Mở TrafficAI trên điện thoại, kết nối RTSP và bấm **TẢI / MỞ AI**.
-3. Trong cài đặt Android Auto trên điện thoại, bật chế độ nhà phát triển và cho phép **Nguồn không xác định**.
+3. Cài bản thử nghiệm qua **Google Play Internal App Sharing** hoặc **Internal Test Track**.
 4. Kết nối điện thoại với Android Auto, mở trình khởi chạy ứng dụng và chọn **TrafficAI Auto**.
 5. Nếu chưa thấy ứng dụng, vào **Tùy chỉnh trình khởi chạy** của Android Auto và bật TrafficAI Auto.
+
+Android Auto thật yêu cầu Car App Library được cài từ nguồn tin cậy. Tùy chọn **Nguồn không xác định** không áp dụng cho loại app này, nên APK tải trực tiếp từ GitHub có thể cài trên điện thoại nhưng vẫn bị màn hình xe ẩn.
 
 Màn hình xe chỉ là màn hình phụ. Ứng dụng trên điện thoại phải đang chạy để xử lý camera, GPS và giọng nói. Đây là APK debug dành cho thử nghiệm cá nhân, chưa phải bản phát hành Google Play và chưa có dẫn đường từng chặng.
 

@@ -10,6 +10,7 @@ required=(
   "$project_root/app/src/main/res/layout/activity_main.xml"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoadGeometryPrior.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/YoloDetector.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CarTelemetryStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficCarAppService.java"

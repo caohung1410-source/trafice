@@ -156,44 +156,69 @@ public final class AiCoordinator implements AutoCloseable {
         SignalCandidate signal = null;
         for (Detection detection : raw) {
             if (detection.box.width() < 5f || detection.box.height() < 5f) continue;
+            float centerX = detection.box.centerX() / frame.getWidth();
+            float centerY = detection.box.centerY() / frame.getHeight();
+            float geometry = detection.classId == SIGN_GREEN_LIGHT_CLASS
+                    || detection.classId == SIGN_RED_LIGHT_CLASS
+                    ? RoadGeometryPrior.trafficLightEvidence(centerX, centerY)
+                    : RoadGeometryPrior.trafficSignEvidence(centerX, centerY);
+            float adjustedConfidence = RoadGeometryPrior.adjustConfidence(
+                    detection.confidence, geometry);
+            Detection adjusted = new Detection(
+                    detection.box,
+                    detection.classId,
+                    detection.label,
+                    adjustedConfidence,
+                    detection.kind);
             if (detection.classId == SIGN_GREEN_LIGHT_CLASS
                     || detection.classId == SIGN_RED_LIGHT_CLASS) {
                 TrafficState state = detection.classId == SIGN_GREEN_LIGHT_CLASS
                         ? TrafficState.GREEN : TrafficState.RED;
                 TrafficLightAnalyzer.Result pixel = lightAnalyzer.analyze(frame, detection.box);
                 boolean agrees = pixel.state == state;
-                float confidence = clamp(
-                        detection.confidence * (agrees ? 0.78f : 0.90f)
-                                + (agrees ? pixel.confidence * 0.22f : 0f),
-                        0f, 1f);
-                if (confidence >= (agrees ? 0.24f : 0.38f)
+                boolean noPixelAnswer = pixel.state == TrafficState.UNKNOWN;
+                // Nếu màu pixel kết luận ngược model thì bỏ ứng viên để tránh đọc sai đèn.
+                if (!agrees && !noPixelAnswer) continue;
+                float confidence = agrees
+                        ? clamp(adjustedConfidence * 0.70f + pixel.confidence * 0.30f, 0f, 1f)
+                        : adjustedConfidence * 0.72f;
+                boolean strongWithoutPixel = noPixelAnswer
+                        && adjustedConfidence >= 0.62f && geometry >= 0.68f;
+                if ((agrees && confidence >= 0.32f || strongWithoutPixel)
                         && (signal == null || confidence > signal.confidence)) {
-                    signal = new SignalCandidate(detection, state, confidence);
+                    signal = new SignalCandidate(adjusted, state, confidence);
                 }
                 continue;
             }
-            signs.add(detection);
+            signs.add(adjusted);
         }
         return new SignPass(YoloDetector.mergeNms(signs, 0.36f, 12), signal);
     }
 
     private RectF nextLightTile(Bitmap frame) {
-        int index = lightTile++ % 3;
+        // Quét phải gấp đôi vì cột đứng thường nằm bên phải; full-frame ở lượt trên vẫn
+        // giữ mọi vị trí. Thứ tự: phải, giữa, phải, trái.
+        int index = lightTile++ % 4;
         float width = frame.getWidth();
         float height = frame.getHeight();
-        if (index == 0) return new RectF(0, 0, width * 0.52f, height * 0.82f);
-        if (index == 1) return new RectF(width * 0.24f, 0, width * 0.76f, height * 0.82f);
-        return new RectF(width * 0.48f, 0, width, height * 0.82f);
+        if (index == 0 || index == 2) {
+            return new RectF(width * 0.44f, 0, width, height * 0.84f);
+        }
+        if (index == 1) return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.84f);
+        return new RectF(0, 0, width * 0.56f, height * 0.84f);
     }
 
     private RectF nextSignTile(Bitmap frame) {
-        // Giữ mỗi vùng trong hai frame liên tiếp để bộ đồng thuận nhìn lại được cùng một biển xa.
-        int index = (signTile++ / 2) % 3;
+        // Mỗi vùng được giữ hai frame cho bộ đồng thuận. Thứ tự ưu tiên:
+        // phải, giữa, phải, trái (bên phải chiếm 50% số lượt phóng đại).
+        int index = (signTile++ / 2) % 4;
         float width = frame.getWidth();
         float height = frame.getHeight();
-        if (index == 0) return new RectF(0, 0, width * 0.52f, height * 0.88f);
-        if (index == 1) return new RectF(width * 0.24f, 0, width * 0.76f, height * 0.88f);
-        return new RectF(width * 0.48f, 0, width, height * 0.88f);
+        if (index == 0 || index == 2) {
+            return new RectF(width * 0.44f, 0, width, height * 0.88f);
+        }
+        if (index == 1) return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.88f);
+        return new RectF(0, 0, width * 0.56f, height * 0.88f);
     }
 
     private LightCandidate chooseTargetLight(Bitmap frame, List<Detection> detections) {
@@ -205,17 +230,25 @@ public final class AiCoordinator implements AutoCloseable {
             if (centerY > 0.88f) continue;
             TrafficLightAnalyzer.Result color = lightAnalyzer.analyze(frame, detection.box);
             if (color.state == TrafficState.UNKNOWN) continue;
-            float centerEvidence = clamp(1f - Math.abs(centerX - 0.5f) / 0.5f, 0f, 1f);
+            float geometry = RoadGeometryPrior.trafficLightEvidence(centerX, centerY);
+            float adjustedConfidence = RoadGeometryPrior.adjustConfidence(
+                    detection.confidence, geometry);
             float area = detection.box.width() * detection.box.height()
                     / (frame.getWidth() * (float) frame.getHeight());
             float sizeEvidence = clamp(area / 0.008f, 0f, 1f);
-            float score = detection.confidence * 0.48f
-                    + color.confidence * 0.30f
-                    + centerEvidence * 0.15f
-                    + sizeEvidence * 0.07f;
+            float score = adjustedConfidence * 0.40f
+                    + color.confidence * 0.32f
+                    + geometry * 0.22f
+                    + sizeEvidence * 0.06f;
             if (score > bestScore) {
                 bestScore = score;
-                best = new LightCandidate(detection, color);
+                Detection adjusted = new Detection(
+                        detection.box,
+                        detection.classId,
+                        detection.label,
+                        adjustedConfidence,
+                        detection.kind);
+                best = new LightCandidate(adjusted, color);
             }
         }
         return best;

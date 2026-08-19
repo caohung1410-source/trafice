@@ -27,7 +27,8 @@ public final class PureLogicSelfTest {
         tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_820);
         CountdownTracker.Result changed = tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_940);
         require(changed.state == TrafficState.GREEN, "Cần nhận đổi màu đèn");
-        require(changed.visibleNumber == null, "Đổi màu phải reset countdown cũ");
+        require(changed.visibleNumber != null && changed.visibleNumber == 8,
+                "Đổi màu phải bỏ số cũ và nhận số mới có độ tin cậy cao");
 
         System.out.println("PureLogicSelfTest: PASS");
     }

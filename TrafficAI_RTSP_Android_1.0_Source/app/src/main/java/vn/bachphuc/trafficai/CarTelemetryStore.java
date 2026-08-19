@@ -13,6 +13,7 @@ public final class CarTelemetryStore {
         public final int speedKmh;
         public final int speedLimitKmh;
         public final String limitSource;
+        public final String lane;
         public final String light;
         public final Integer countdown;
         public final String sign;
@@ -30,6 +31,7 @@ public final class CarTelemetryStore {
                 int speedKmh,
                 int speedLimitKmh,
                 String limitSource,
+                String lane,
                 String light,
                 Integer countdown,
                 String sign,
@@ -45,6 +47,7 @@ public final class CarTelemetryStore {
             this.speedKmh = speedKmh;
             this.speedLimitKmh = speedLimitKmh;
             this.limitSource = limitSource;
+            this.lane = lane;
             this.light = light;
             this.countdown = countdown;
             this.sign = sign;
@@ -65,6 +68,7 @@ public final class CarTelemetryStore {
     private static volatile int speedKmh;
     private static volatile int speedLimitKmh;
     private static volatile String limitSource = "Chưa đặt";
+    private static volatile String lane = "GIỮA";
     private static volatile String light = "Chưa thấy";
     private static volatile Integer countdown;
     private static volatile String sign = "Chưa thấy";
@@ -83,7 +87,7 @@ public final class CarTelemetryStore {
 
     public static State snapshot() {
         return new State(
-                speedKmh, speedLimitKmh, limitSource, light, countdown, sign,
+                speedKmh, speedLimitKmh, limitSource, lane, light, countdown, sign,
                 hazard, landmark, destination, navigationInstruction,
                 navigationDistanceMeters, navigationActive, targetLocked,
                 cameraConnected, aiReady);
@@ -97,6 +101,11 @@ public final class CarTelemetryStore {
     public static void updateLimit(int value, String source) {
         speedLimitKmh = Math.max(0, value);
         limitSource = source == null || source.trim().isEmpty() ? "Chưa đặt" : source;
+        notifyListeners();
+    }
+
+    public static void updateLane(String value) {
+        lane = value == null || value.trim().isEmpty() ? "GIỮA" : value;
         notifyListeners();
     }
 
@@ -121,7 +130,8 @@ public final class CarTelemetryStore {
         if (hint == null || !hint.isActive()) {
             landmark = "Chưa có điểm gần";
         } else {
-            String kind = hint.expectsLight() ? "Đèn" : "Biển";
+            String kind = hint.expectsLight() ? "Đèn"
+                    : hint.isMapAlert() ? "Cảnh báo" : "Biển";
             landmark = kind + ": " + hint.label + " • "
                     + Math.round(hint.distanceMeters) + " m";
         }

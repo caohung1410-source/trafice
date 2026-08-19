@@ -21,7 +21,7 @@ import java.util.Set;
 /** Client nhỏ cho Nominatim, Overpass và OSRM; mọi lời gọi phải chạy ngoài main thread. */
 public final class NavigationDataService {
     private static final String USER_AGENT =
-            "TrafficAI-RTSP/2.2 (personal navigation; github.com/caohung1410-source/trafice)";
+            "TrafficAI-RTSP/2.3 (personal navigation; github.com/caohung1410-source/trafice)";
     private static final int MAX_RESPONSE_CHARS = 5_000_000;
     private static final int OVERPASS_CONNECT_TIMEOUT_MS = 10_000;
     private static final int OVERPASS_READ_TIMEOUT_MS = 28_000;
@@ -48,6 +48,9 @@ public final class NavigationDataService {
     public static final class TrafficFeature {
         public static final String LIGHT = "LIGHT";
         public static final String SIGN = "SIGN";
+        public static final String CAMERA = "CAMERA";
+        public static final String RAILWAY = "RAILWAY";
+        public static final String TOLL = "TOLL";
 
         public final String osmId;
         public final String kind;
@@ -104,7 +107,13 @@ public final class NavigationDataService {
                         + "node(around:5000,%.7f,%.7f)[\"traffic_sign\"];"
                         + "node(around:5000,%.7f,%.7f)[\"highway\"=\"stop\"];"
                         + "node(around:5000,%.7f,%.7f)[\"highway\"=\"give_way\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"highway\"=\"speed_camera\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"enforcement\"=\"maxspeed\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"railway\"=\"level_crossing\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"barrier\"=\"toll_booth\"];"
                         + ");out body 300;",
+                queryLatitude, queryLongitude, queryLatitude, queryLongitude,
+                queryLatitude, queryLongitude, queryLatitude, queryLongitude,
                 queryLatitude, queryLongitude, queryLatitude, queryLongitude,
                 queryLatitude, queryLongitude, queryLatitude, queryLongitude);
         String body = "data=" + encode(query);
@@ -118,9 +127,21 @@ public final class NavigationDataService {
             JSONObject tags = element.optJSONObject("tags");
             if (tags == null) tags = new JSONObject();
             String highway = tags.optString("highway", "");
+            String railway = tags.optString("railway", "");
+            String barrier = tags.optString("barrier", "");
+            String enforcement = tags.optString("enforcement", "");
             boolean light = "traffic_signals".equals(highway);
-            String kind = light ? TrafficFeature.LIGHT : TrafficFeature.SIGN;
-            String label = light ? "Cột/điểm đèn tín hiệu OSM" : signLabel(tags, highway);
+            boolean camera = "speed_camera".equals(highway) || "maxspeed".equals(enforcement);
+            boolean railwayCrossing = "level_crossing".equals(railway);
+            boolean toll = "toll_booth".equals(barrier);
+            String kind = light ? TrafficFeature.LIGHT
+                    : camera ? TrafficFeature.CAMERA
+                    : railwayCrossing ? TrafficFeature.RAILWAY
+                    : toll ? TrafficFeature.TOLL : TrafficFeature.SIGN;
+            String label = light ? "Cột/điểm đèn tín hiệu OSM"
+                    : camera ? "Camera tốc độ / giám sát OSM"
+                    : railwayCrossing ? "Giao cắt đường sắt OSM"
+                    : toll ? "Trạm thu phí OSM" : signLabel(tags, highway);
             String id = element.optString("type", "node") + element.optLong("id", index);
             features.add(new TrafficFeature(
                     id, kind, label,

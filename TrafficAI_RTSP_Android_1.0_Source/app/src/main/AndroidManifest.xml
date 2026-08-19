@@ -17,7 +17,7 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_traffic_auto"
-        android:label="TrafficAI RTSP"
+        android:label="TrafficAI Drive"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
@@ -43,7 +43,7 @@
             android:name=".TrafficCarAppService"
             android:exported="true"
             android:icon="@drawable/ic_traffic_auto"
-            android:label="TrafficAI Auto">
+            android:label="TrafficAI Drive Auto">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.NAVIGATION" />

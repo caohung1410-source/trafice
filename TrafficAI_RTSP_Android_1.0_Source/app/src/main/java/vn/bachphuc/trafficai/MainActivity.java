@@ -62,6 +62,7 @@ import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -89,7 +90,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private PlayerView playerView;
     private DetectionOverlayView overlayView;
-    private LinearLayout settingsPanel;
+    private View settingsPanel;
     private EditText fullUrlInput;
     private EditText hostInput;
     private EditText portInput;
@@ -105,6 +106,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private TextView speedResult;
     private TextView speedLimitResult;
     private TextView hazardResult;
+    private TextView roadAlertBanner;
+    private TextView tripSummaryText;
+    private TextView driveModeText;
     private ProgressBar modelProgress;
     private Button initAiButton;
     private Button mapButton;
@@ -115,10 +119,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private EditText routingUrlInput;
     private EditText overpassUrlInput;
     private TextView navigationInfo;
-    private Button routeButton;
-    private Button voiceSearchButton;
+    private View routeButton;
+    private View voiceSearchButton;
     private Button refreshTrafficMapButton;
     private Button clearRouteButton;
+    private Button laneLeftButton;
+    private Button laneCenterButton;
+    private Button laneRightButton;
+    private LanePreference lanePreference = LanePreference.CENTER;
 
     private ExoPlayer player;
     private Bitmap captureBitmap;
@@ -220,6 +228,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         }
         CarTelemetryStore.updateConnection(false, false);
         restoreProviderSettings();
+        restoreLanePreference();
         updateMapButtonCount();
         checkOfflineMapStatus();
         requestGpsPermission();
@@ -245,6 +254,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         speedResult = findViewById(R.id.speedResult);
         speedLimitResult = findViewById(R.id.speedLimitResult);
         hazardResult = findViewById(R.id.hazardResult);
+        roadAlertBanner = findViewById(R.id.roadAlertBanner);
+        tripSummaryText = findViewById(R.id.tripSummaryText);
+        driveModeText = findViewById(R.id.driveModeText);
         modelProgress = findViewById(R.id.modelProgress);
         initAiButton = findViewById(R.id.initAiButton);
         mapButton = findViewById(R.id.mapButton);
@@ -259,12 +271,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         voiceSearchButton = findViewById(R.id.voiceSearchButton);
         refreshTrafficMapButton = findViewById(R.id.refreshTrafficMapButton);
         clearRouteButton = findViewById(R.id.clearRouteButton);
+        laneLeftButton = findViewById(R.id.laneLeftButton);
+        laneCenterButton = findViewById(R.id.laneCenterButton);
+        laneRightButton = findViewById(R.id.laneRightButton);
         mapView = findViewById(R.id.mapView);
         baseMapView = findViewById(R.id.baseMapView);
     }
 
     private void bindActions() {
-        Button toggleSettings = findViewById(R.id.toggleSettingsButton);
+        View toggleSettings = findViewById(R.id.toggleSettingsButton);
+        View closeSettings = findViewById(R.id.closeSettingsButton);
         Button subStream = findViewById(R.id.subStreamButton);
         Button mainStream = findViewById(R.id.mainStreamButton);
         Button connect = findViewById(R.id.connectButton);
@@ -275,11 +291,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         Button limit60 = findViewById(R.id.limit60Button);
         Button limit80 = findViewById(R.id.limit80Button);
 
-        toggleSettings.setOnClickListener(view -> {
-            boolean hidden = settingsPanel.getVisibility() == View.GONE;
-            settingsPanel.setVisibility(hidden ? View.VISIBLE : View.GONE);
-            toggleSettings.setText(hidden ? "ẨN" : "CẤU HÌNH");
-        });
+        toggleSettings.setOnClickListener(view -> setSettingsVisible(true));
+        closeSettings.setOnClickListener(view -> setSettingsVisible(false));
         subStream.setOnClickListener(view -> setImouSubtype(1));
         mainStream.setOnClickListener(view -> setImouSubtype(0));
         connect.setOnClickListener(view -> connectRtsp());
@@ -291,6 +304,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         routeButton.setOnClickListener(view -> searchAndRoute());
         refreshTrafficMapButton.setOnClickListener(view -> refreshTrafficMapData(true));
         clearRouteButton.setOnClickListener(view -> clearNavigation());
+        laneLeftButton.setOnClickListener(view -> selectLane(LanePreference.LEFT, true));
+        laneCenterButton.setOnClickListener(view -> selectLane(LanePreference.CENTER, true));
+        laneRightButton.setOnClickListener(view -> selectLane(LanePreference.RIGHT, true));
         destinationSearchInput.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId != EditorInfo.IME_ACTION_GO) return false;
             searchAndRoute();
@@ -320,6 +336,36 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 "routing", "https://router.project-osrm.org"));
         overpassUrlInput.setText(preferences.getString(
                 "overpass", "https://overpass-api.de/api/interpreter"));
+    }
+
+    private void restoreLanePreference() {
+        SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
+        selectLane(LanePreference.fromStored(preferences.getString("lane", "CENTER")), false);
+    }
+
+    private void selectLane(LanePreference preference, boolean announce) {
+        lanePreference = preference == null ? LanePreference.CENTER : preference;
+        laneLeftButton.setSelected(lanePreference == LanePreference.LEFT);
+        laneCenterButton.setSelected(lanePreference == LanePreference.CENTER);
+        laneRightButton.setSelected(lanePreference == LanePreference.RIGHT);
+        AiCoordinator engine = aiCoordinator;
+        if (engine != null) engine.setLanePreference(lanePreference);
+        getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
+                .putString("lane", lanePreference.name())
+                .apply();
+        updateDriveMode();
+        CarTelemetryStore.updateLane(lanePreference.vi);
+        if (announce) {
+            String message = "Ưu tiên quan sát làn "
+                    + lanePreference.vi.toLowerCase(new Locale("vi", "VN"));
+            setStatus(message + " • AI vẫn quét toàn cảnh định kỳ");
+            if (ttsReady) speak(message, TextToSpeech.QUEUE_ADD);
+        }
+    }
+
+    private void setSettingsVisible(boolean visible) {
+        settingsPanel.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) settingsPanel.bringToFront();
     }
 
     private void saveProviderSettings() {
@@ -435,6 +481,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 + shortPlaceName(destination.displayName) + " • "
                 + formatDistance(plan.distanceMeters) + " • "
                 + formatDuration(plan.durationSeconds));
+        tripSummaryText.setText("Còn " + formatDistance(plan.distanceMeters)
+                + " • " + formatDuration(plan.durationSeconds)
+                + " • dự kiến " + formatArrivalTime(plan.durationSeconds));
         CarTelemetryStore.updateNavigation(
                 destination.displayName, "Đã có tuyến", plan.distanceMeters, true);
         if (!mapVisible) toggleMap();
@@ -464,6 +513,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         currentDestination = null;
         offRouteSince = 0L;
         navigationInfo.setText("Chưa chọn điểm đến");
+        tripSummaryText.setText("GPS sẽ hiển thị quãng đường và thời gian dự kiến");
         CarTelemetryStore.updateNavigation("", "", 0d, false);
         redrawMapAnnotations();
         setStatus("Đã dừng dẫn đường");
@@ -484,6 +534,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         int minutes = Math.max(1, (int) Math.round(seconds / 60d));
         if (minutes < 60) return minutes + " phút";
         return minutes / 60 + " giờ " + minutes % 60 + " phút";
+    }
+
+    private String formatArrivalTime(double durationSeconds) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(System.currentTimeMillis()
+                + Math.max(0L, Math.round(durationSeconds * 1_000d)));
+        return String.format(Locale.US, "%02d:%02d",
+                calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE));
     }
 
     private void initBaseMap(Bundle savedInstanceState) {
@@ -549,7 +607,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.2.2 • "
+        String metadata = "{\"name\":\"TrafficAI 2.3 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -656,16 +714,23 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 lastLocation.getLatitude(), lastLocation.getLongitude(), 12_000d, 260);
         for (NavigationDataService.TrafficFeature feature : features) {
             if (!mappedOsmFeatureIds.add(feature.osmId)) continue;
-            String kind = NavigationDataService.TrafficFeature.LIGHT.equals(feature.kind)
-                    ? "ĐÈN OSM" : "BIỂN OSM";
+            String kind = mapFeatureKind(feature.kind);
             baseMap.addMarker(new MarkerOptions()
                     .position(new LatLng(feature.latitude, feature.longitude))
                     .title(kind + ": " + feature.label)
                     .snippet("Dữ liệu OpenStreetMap đã cache trong máy"));
         }
         if (refreshTrafficMapButton != null) {
-            refreshTrafficMapButton.setText("BIỂN / ĐÈN OSM • " + features.size());
+            refreshTrafficMapButton.setText("ĐIỂM CẢNH BÁO OSM • " + features.size());
         }
+    }
+
+    private String mapFeatureKind(String kind) {
+        if (NavigationDataService.TrafficFeature.LIGHT.equals(kind)) return "ĐÈN OSM";
+        if (NavigationDataService.TrafficFeature.CAMERA.equals(kind)) return "CAMERA OSM";
+        if (NavigationDataService.TrafficFeature.RAILWAY.equals(kind)) return "ĐƯỜNG SẮT OSM";
+        if (NavigationDataService.TrafficFeature.TOLL.equals(kind)) return "THU PHÍ OSM";
+        return "BIỂN OSM";
     }
 
     private void drawCurrentRoute() {
@@ -726,11 +791,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     String server = navigationDataService.getLastOverpassServer();
                     if (features.isEmpty()) {
                         setStatus("Đã kết nối " + server
-                                + " nhưng OSM chưa có biển/đèn trong vùng 5 km"
+                                + " nhưng OSM chưa có điểm cảnh báo trong vùng 5 km"
                                 + " • Map Memory vẫn hoạt động");
                     } else {
                         setStatus("Đã gộp " + features.size()
-                                + " điểm biển/đèn OSM với Map Memory • nguồn " + server);
+                                + " điểm biển/đèn/camera OSM với Map Memory • nguồn " + server);
                     }
                 });
             } catch (Throwable error) {
@@ -738,7 +803,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     if (destroyed) return;
                     trafficDataBusy = false;
                     refreshTrafficMapButton.setEnabled(true);
-                    refreshTrafficMapButton.setText("THỬ LẠI NẠP BIỂN / ĐÈN");
+                    refreshTrafficMapButton.setText("THỬ LẠI NẠP ĐIỂM CẢNH BÁO");
                     setStatus("Không nạp được OSM mới: " + safeMessage(error)
                             + " • vẫn hiển thị dữ liệu đã cache");
                 });
@@ -749,7 +814,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void updateMapButtonCount() {
         if (mapButton == null || landmarkStore == null || mapVisible) return;
         int count = landmarkStore.count();
-        mapButton.setText(count > 0 ? "BẢN ĐỒ • " + count : "BẢN ĐỒ");
+        mapButton.setText(count > 0 ? "MAP " + count : "MAP");
     }
 
     private void setImouSubtype(int subtype) {
@@ -875,13 +940,15 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     }
                     aiCoordinator = ready;
                     ready.setLandmarkHint(currentLandmarkHint);
+                    ready.setLanePreference(lanePreference);
                     boolean cameraReady = player != null
                             && player.getPlaybackState() == Player.STATE_READY;
                     CarTelemetryStore.updateConnection(cameraReady, true);
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.2.2: AI sẵn sàng • theo dõi từng biển");
+                    setStatus("TrafficAI 2.3: AI sẵn sàng • ưu tiên làn "
+                            + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
@@ -939,7 +1006,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.2.2 • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.3 • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -1032,11 +1099,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         mapVisible = !mapVisible;
         baseMapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
-        navigationPanel.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         playerView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
-        mapButton.setText(mapVisible ? "CAMERA" : "BẢN ĐỒ");
+        mapButton.setText(mapVisible ? "CAMERA" : "MAP");
         if (mapVisible && lastLocation != null) {
             lastMapCameraAt = 0L;
             redrawMapAnnotations();
@@ -1065,7 +1131,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (requestCode == LOCATION_PERMISSION_REQUEST && hasAnyLocationPermission()) {
             startGps();
         } else if (requestCode == LOCATION_PERMISSION_REQUEST) {
-            speedResult.setText("GPS\nCHƯA CẤP QUYỀN");
+            speedResult.setText("GPS\nTẮT");
             mapView.setStatus("CHƯA CẤP QUYỀN VỊ TRÍ");
         }
     }
@@ -1080,7 +1146,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void startGps() {
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         if (locationManager == null || !hasAnyLocationPermission()) {
-            speedResult.setText("GPS\nCHƯA CẤP QUYỀN");
+            speedResult.setText("GPS\nTẮT");
             mapView.setStatus("CHƯA CẤP QUYỀN VỊ TRÍ");
             return;
         }
@@ -1110,13 +1176,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
             if (initial != null) applyLocation(initial);
             if (initial == null) {
-                speedResult.setText(requested ? "VỊ TRÍ\nĐANG TÌM" : "HÃY BẬT\nVỊ TRÍ");
+                speedResult.setText(requested ? "GPS\nĐANG TÌM" : "GPS\nTẮT");
                 mapView.setStatus(requested
                         ? "ĐANG TÌM VỊ TRÍ • RA NGOÀI TRỜI"
                         : "HÃY BẬT VỊ TRÍ TRÊN ĐIỆN THOẠI");
             }
         } catch (Throwable error) {
-            speedResult.setText("GPS\nKHÔNG SẴN SÀNG");
+            speedResult.setText("GPS\nLỖI");
             mapView.setStatus("KHÔNG ĐỌC ĐƯỢC VỊ TRÍ");
         }
     }
@@ -1137,7 +1203,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (!location.hasSpeed()) {
             currentSpeedKmh = 0;
             updateMapPosition(location);
-            speedResult.setText("TỐC ĐỘ GPS\n0 km/h");
+            speedResult.setText("0\nkm/h");
+            updateDriveMode();
             CarTelemetryStore.updateSpeed(0);
             return;
         }
@@ -1150,9 +1217,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         smoothedSpeedKmh = smoothedSpeedKmh == 0d
                 ? rawKmh : smoothedSpeedKmh * 0.62d + rawKmh * 0.38d;
         currentSpeedKmh = Math.max(0, (int) Math.round(smoothedSpeedKmh));
-        speedResult.setText("TỐC ĐỘ GPS\n" + currentSpeedKmh + " km/h");
+        speedResult.setText(currentSpeedKmh + "\nkm/h");
+        updateDriveMode();
         CarTelemetryStore.updateSpeed(currentSpeedKmh);
         evaluateOverSpeed();
+    }
+
+    private void updateDriveMode() {
+        String mode = currentSpeedKmh >= 80 ? "CAO TỐC"
+                : currentSpeedKmh >= 35 ? "ĐƯỜNG TRƯỜNG" : "ĐÔ THỊ";
+        driveModeText.setText(mode + " • LÀN " + lanePreference.vi + " • GPS");
     }
 
     private void updateNavigationGuidance(Location location) {
@@ -1293,20 +1367,49 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
         if (!currentLandmarkHint.isActive()) {
             lastHintId = -1L;
+            roadAlertBanner.setText("ĐANG QUAN SÁT PHÍA TRƯỚC");
             return;
         }
+        roadAlertBanner.setText(currentLandmarkHint.label.toUpperCase(new Locale("vi", "VN"))
+                + " • " + Math.round(currentLandmarkHint.distanceMeters) + " m");
+        updateLimitFromMapHint(currentLandmarkHint);
         long now = SystemClock.elapsedRealtime();
         if (currentLandmarkHint.distanceMeters >= 20d
                 && currentLandmarkHint.distanceMeters <= 130d
                 && currentSpeedKmh >= 8
                 && (currentLandmarkHint.id != lastHintId
                 || now - lastHintSpeechAt >= 60_000L)) {
-            String message = currentLandmarkHint.expectsLight()
-                    ? "Sắp đến vị trí đèn giao thông đã học"
-                    : "Sắp đến biển " + currentLandmarkHint.label;
+            String message = mapAlertSpeech(currentLandmarkHint);
             if (ttsReady) speak(message, TextToSpeech.QUEUE_ADD);
             lastHintId = currentLandmarkHint.id;
             lastHintSpeechAt = now;
+        }
+    }
+
+    private String mapAlertSpeech(LandmarkHint hint) {
+        if (hint.expectsLight()) return "Sắp đến vị trí đèn giao thông";
+        if (hint.isMapAlert()) {
+            String lower = hint.label.toLowerCase(new Locale("vi", "VN"));
+            if (lower.contains("camera")) return "Chú ý, sắp tới vị trí camera giao thông";
+            if (lower.contains("đường sắt")) return "Chú ý, sắp tới giao cắt đường sắt";
+            if (lower.contains("thu phí")) return "Sắp tới trạm thu phí";
+            return "Sắp tới điểm cảnh báo giao thông";
+        }
+        return "Sắp đến biển " + hint.label;
+    }
+
+    private void updateLimitFromMapHint(LandmarkHint hint) {
+        if (hint == null || !hint.expectsSign() || hint.distanceMeters > 120d) return;
+        Matcher matcher = SPEED_LIMIT_PATTERN.matcher(hint.label);
+        if (!matcher.find()) return;
+        try {
+            int detected = Integer.parseInt(matcher.group(1));
+            if (detected >= 10 && detected <= 130 && detected != speedLimitKmh) {
+                setSpeedLimit(detected, "Dữ liệu OSM gần xe");
+                if (ttsReady) speak("Giới hạn tốc độ sắp tới " + detected,
+                        TextToSpeech.QUEUE_ADD);
+            }
+        } catch (NumberFormatException ignored) {
         }
     }
 
@@ -1316,21 +1419,32 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 location.getLatitude(), location.getLongitude(), radiusMeters, 20);
         NavigationDataService.TrafficFeature best = null;
         double bestDistance = Double.POSITIVE_INFINITY;
+        double bestScore = Double.POSITIVE_INFINITY;
+        float heading = location.hasBearing() ? location.getBearing() : lastTravelBearing;
         for (NavigationDataService.TrafficFeature feature : features) {
             double distance = GeoMath.distanceMeters(
                     location.getLatitude(), location.getLongitude(),
                     feature.latitude, feature.longitude);
-            if (distance < bestDistance) {
+            double bearing = GeoMath.bearingDegrees(
+                    location.getLatitude(), location.getLongitude(),
+                    feature.latitude, feature.longitude);
+            double directionDelta = GeoMath.headingDifference(heading, bearing);
+            if (currentSpeedKmh >= 5 && directionDelta > 85d) continue;
+            double score = distance + directionDelta * .55d;
+            if (score < bestScore) {
                 best = feature;
                 bestDistance = distance;
+                bestScore = score;
             }
         }
         if (best == null) return LandmarkHint.NONE;
         boolean light = NavigationDataService.TrafficFeature.LIGHT.equals(best.kind);
+        boolean sign = NavigationDataService.TrafficFeature.SIGN.equals(best.kind);
         long syntheticId = 4_000_000_000L + (best.osmId.hashCode() & 0x7fffffffL);
         return new LandmarkHint(
                 syntheticId,
-                light ? LandmarkHint.TYPE_LIGHT : LandmarkHint.TYPE_SIGN,
+                light ? LandmarkHint.TYPE_LIGHT
+                        : sign ? LandmarkHint.TYPE_SIGN : LandmarkHint.TYPE_ALERT,
                 best.label,
                 light ? .68f : .80f,
                 light ? .34f : .45f,
@@ -1362,8 +1476,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void setSpeedLimit(int value, String source) {
         speedLimitKmh = Math.max(0, value);
         speedLimitResult.setText(speedLimitKmh > 0
-                ? "GIỚI HẠN\n" + speedLimitKmh + " km/h"
-                : "GIỚI HẠN\n—");
+                ? speedLimitKmh + "\nMAX"
+                : "MAX\n—");
         CarTelemetryStore.updateLimit(speedLimitKmh, source);
         overSpeedSince = 0L;
     }
@@ -1372,8 +1486,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         long now = SystemClock.elapsedRealtime();
         if (speedLimitKmh <= 0 || currentSpeedKmh <= speedLimitKmh + 5) {
             overSpeedSince = 0L;
+            speedResult.setTextColor(Color.WHITE);
             return;
         }
+        speedResult.setTextColor(Color.rgb(255, 102, 92));
         if (overSpeedSince == 0L) overSpeedSince = now;
         if (now - overSpeedSince >= 1_800L && now - lastOverSpeedSpeechAt >= 12_000L) {
             speak("Bạn đang chạy " + currentSpeedKmh + ", giới hạn "
@@ -1387,7 +1503,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lightResult.setText("ĐÈN\n—");
         countdownResult.setText("GIÂY\n—");
         signResult.setText("BIỂN BÁO\n—");
-        hazardResult.setText("PHÍA TRƯỚC\nĐANG QUAN SÁT");
+        hazardResult.setText("PHÍA TRƯỚC • ĐANG QUAN SÁT");
+        roadAlertBanner.setText("ĐANG QUAN SÁT PHÍA TRƯỚC");
         lastSpokenSignal = "";
         lastSpokenSign = "";
         lastSpokenSignTrackId = -1L;
@@ -1454,6 +1571,19 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (settingsPanel != null && settingsPanel.getVisibility() == View.VISIBLE) {
+            setSettingsVisible(false);
+            return;
+        }
+        if (mapVisible) {
+            toggleMap();
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override

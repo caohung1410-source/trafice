@@ -27,6 +27,7 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MapFeatureStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/SignDecisionPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/SignTrackMath.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/LanePreference.java"
   "$project_root/app/src/main/res/xml/automotive_app_desc.xml"
   "$project_root/app/src/main/assets/sign_labels_vi.txt"
 )
@@ -67,4 +68,9 @@ grep -q "overpass.private.coffee" "$project_root/app/src/main/java/vn/bachphuc/t
 grep -q "roundForPublicMapQuery" "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
 grep -q "BIỂN RAW" "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
 grep -q "signTrackId" "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiResult.java"
-echo "verify_project: PASS • TrafficAI 2.2.2 per-sign tracking/adaptive consensus • 82 labels • Android Auto • XML/credential OK"
+grep -q 'android:id="@+id/settingsPanel"' "$project_root/app/src/main/res/layout/activity_main.xml"
+grep -q 'android:visibility="gone"' "$project_root/app/src/main/res/layout/activity_main.xml"
+grep -q "LanePreference" "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
+grep -q 'TrafficFeature.CAMERA' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'highway\\"=\\"speed_camera' "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
+echo "verify_project: PASS • TrafficAI 2.3 Drive UI • hidden settings • lane priority • OSM alerts • 82 labels • Android Auto"

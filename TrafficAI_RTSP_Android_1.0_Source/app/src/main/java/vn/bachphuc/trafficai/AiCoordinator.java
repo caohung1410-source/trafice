@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.2.2: tracker từng biển và gợi ý vùng ảnh từ bộ nhớ tọa độ. */
+/** Điều phối thị giác 2.3: tracker từng biển, bộ nhớ tọa độ và ưu tiên làn xe. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
@@ -50,6 +50,7 @@ public final class AiCoordinator implements AutoCloseable {
     private int lastSignRawCount;
     private String lastVisionMode = "QUÉT";
     private LandmarkHint landmarkHint = LandmarkHint.NONE;
+    private LanePreference lanePreference = LanePreference.CENTER;
 
     public AiCoordinator(File lightModel, File signModel, String[] signLabels) throws Exception {
         // Tận dụng cùng một lượt COCO để thấy đèn và các đối tượng giao thông phía trước.
@@ -163,6 +164,7 @@ public final class AiCoordinator implements AutoCloseable {
         long signTrackId = stableSign == null ? -1L : stableSign.trackId;
         long elapsed = SystemClock.elapsedRealtime() - started;
         String status = lastVisionMode
+                + " • LÀN " + lanePreference.vi
                 + (targetLocked ? " • KHÓA MỤC TIÊU" : " • ĐANG TÌM")
                 + (hint.isActive() ? " • ĐIỂM ĐÃ HỌC "
                 + Math.round(hint.distanceMeters) + " m" : "")
@@ -285,29 +287,30 @@ public final class AiCoordinator implements AutoCloseable {
     }
 
     private RectF nextLightTile(Bitmap frame) {
-        int index = lightTile++ % 4;
+        int slot = lanePreference.scanSlot(lightTile++);
         float width = frame.getWidth();
         float height = frame.getHeight();
-        if (index == 0 || index == 2) {
+        if (slot == 1) {
             return new RectF(width * 0.44f, 0, width, height * 0.84f);
         }
-        if (index == 1) {
+        if (slot == 0) {
             return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.84f);
         }
-        return new RectF(0, 0, width * 0.56f, height * 0.84f);
+        if (slot == -1) return new RectF(0, 0, width * 0.56f, height * 0.84f);
+        return null;
     }
 
     private RectF nextSignTile(Bitmap frame) {
-        int index = signTile++ % 5;
+        int slot = lanePreference.scanSlot(signTile++);
         float width = frame.getWidth();
         float height = frame.getHeight();
-        if (index == 0 || index == 2) {
+        if (slot == 1) {
             return new RectF(width * 0.44f, 0, width, height * 0.88f);
         }
-        if (index == 1) {
+        if (slot == 0) {
             return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.88f);
         }
-        if (index == 3) {
+        if (slot == -1) {
             return new RectF(0, 0, width * 0.56f, height * 0.88f);
         }
         return null;
@@ -341,6 +344,7 @@ public final class AiCoordinator implements AutoCloseable {
             if (color.state == TrafficState.UNKNOWN) continue;
             float geometry = RoadGeometryPrior.trafficLightEvidence(centerX, centerY);
             float direction = RoadGeometryPrior.travelDirectionEvidence(centerX, centerY);
+            float laneEvidence = lanePreference.visualEvidence(centerX);
             float adjustedConfidence = RoadGeometryPrior.adjustConfidence(
                     detection.confidence, geometry);
             float area = detection.box.width() * detection.box.height()
@@ -351,9 +355,10 @@ public final class AiCoordinator implements AutoCloseable {
             float score = adjustedConfidence * 0.31f
                     + color.confidence * 0.29f
                     + geometry * 0.12f
-                    + direction * 0.07f
+                    + direction * 0.05f
+                    + laneEvidence * 0.09f
                     + sizeEvidence * 0.05f
-                    + continuity * 0.16f;
+                    + continuity * 0.09f;
             if (locked && continuity < 0.10f) score -= 0.12f;
             if (score > bestScore) {
                 bestScore = score;
@@ -387,6 +392,10 @@ public final class AiCoordinator implements AutoCloseable {
 
     public synchronized void setLandmarkHint(LandmarkHint hint) {
         landmarkHint = hint == null ? LandmarkHint.NONE : hint;
+    }
+
+    public synchronized void setLanePreference(LanePreference preference) {
+        lanePreference = preference == null ? LanePreference.CENTER : preference;
     }
 
     @Override

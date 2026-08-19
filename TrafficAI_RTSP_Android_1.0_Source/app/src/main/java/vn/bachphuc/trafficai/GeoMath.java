@@ -16,6 +16,16 @@ public final class GeoMath {
         return EARTH_RADIUS_M * 2d * Math.atan2(Math.sqrt(a), Math.sqrt(1d - a));
     }
 
+    public static double bearingDegrees(double lat1, double lon1, double lat2, double lon2) {
+        double first = Math.toRadians(lat1);
+        double second = Math.toRadians(lat2);
+        double deltaLon = Math.toRadians(lon2 - lon1);
+        double y = Math.sin(deltaLon) * Math.cos(second);
+        double x = Math.cos(first) * Math.sin(second)
+                - Math.sin(first) * Math.cos(second) * Math.cos(deltaLon);
+        return normalizeHeading(Math.toDegrees(Math.atan2(y, x)));
+    }
+
     public static double headingDifference(double first, double second) {
         double delta = Math.abs(normalizeHeading(first) - normalizeHeading(second));
         return Math.min(delta, 360d - delta);

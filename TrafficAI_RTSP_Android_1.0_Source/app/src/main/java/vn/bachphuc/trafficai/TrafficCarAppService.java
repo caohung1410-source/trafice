@@ -83,7 +83,7 @@ public final class TrafficCarAppService extends CarAppService {
             Pane.Builder pane = new Pane.Builder()
                     .addRow(new Row.Builder()
                             .setTitle("Tốc độ " + value.speedKmh + " km/h")
-                            .addText("Giới hạn: " + limit)
+                            .addText("Giới hạn: " + limit + " • làn " + value.lane)
                             .build())
                     .addRow(new Row.Builder()
                             .setTitle("Tín hiệu: " + signal)
@@ -110,7 +110,7 @@ public final class TrafficCarAppService extends CarAppService {
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI 2.2.2 • Sign Tracker")
+                    .setTitle("TrafficAI Drive 2.3")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
         }

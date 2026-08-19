@@ -1,5 +1,6 @@
 import vn.bachphuc.trafficai.CountdownTracker;
 import vn.bachphuc.trafficai.GeoMath;
+import vn.bachphuc.trafficai.LanePreference;
 import vn.bachphuc.trafficai.NavigationInstruction;
 import vn.bachphuc.trafficai.NavigationSession;
 import vn.bachphuc.trafficai.RoadGeometryPrior;
@@ -77,6 +78,18 @@ public final class PureLogicSelfTest {
                 500f, 100f, 520f, 120f) < .20f,
                 "Hai biển cùng cỡ nhưng ở xa không được nhập chung track");
 
+        require(LanePreference.LEFT.scanSlot(0) == -1
+                        && LanePreference.LEFT.scanSlot(1) == -1,
+                "Chọn làn trái phải ưu tiên quét phía trái hai lượt đầu");
+        require(LanePreference.RIGHT.scanSlot(0) == 1
+                        && LanePreference.RIGHT.scanSlot(4) == 2,
+                "Chọn làn phải vẫn phải quay lại quét toàn cảnh");
+        require(LanePreference.CENTER.visualEvidence(.50f)
+                        > LanePreference.CENTER.visualEvidence(.05f),
+                "Cụm đèn giữa ảnh phải phù hợp hơn khi chọn làn giữa");
+        require(LanePreference.fromStored("không hợp lệ") == LanePreference.CENTER,
+                "Làn lưu sai phải quay về làn giữa an toàn");
+
         require(GeoMath.distanceMeters(13.97609, 108.00695,
                 13.97609, 108.00695) < .01d, "Cùng tọa độ phải có khoảng cách bằng 0");
         double nearby = GeoMath.distanceMeters(13.97609, 108.00695,
@@ -85,6 +98,9 @@ public final class PureLogicSelfTest {
                 "Chênh 0,001 độ vĩ phải xấp xỉ 111 m");
         require(Math.abs(GeoMath.headingDifference(350d, 10d) - 20d) < .001d,
                 "So hướng phải xử lý đúng qua mốc 0/360 độ");
+        require(GeoMath.headingDifference(
+                GeoMath.bearingDegrees(13.97609, 108.00695, 13.97709, 108.00695), 0d) < 1d,
+                "Điểm tăng vĩ độ phải nằm gần hướng Bắc để lọc cảnh báo phía trước");
         require(GeoMath.headingDifference(
                 GeoMath.averageHeading(350d, 10d, .5d), 0d) < .001d,
                 "Trung bình hướng 350/10 phải gần hướng Bắc");

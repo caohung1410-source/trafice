@@ -1,6 +1,18 @@
-# TrafficAI 2.2.2 • Sign Tracker ARM64
+# TrafficAI Drive 2.3 • Driver UI ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.3: giao diện trợ lý lái xe
+
+- Màn hình chính mới tập trung vào camera/bản đồ, tìm đường, hướng rẽ, tốc độ, giới hạn, đèn, số giây, biển báo và cảnh báo phía trước.
+- Toàn bộ URL RTSP, tài khoản camera, nút mở AI, tải map, máy chủ bản đồ và giới hạn thủ công được giấu trong bảng cài đặt toàn màn hình mở bằng biểu tượng bánh răng.
+- Tìm điểm đến và tìm bằng giọng nói nằm ngay đầu màn hình; sau khi tạo tuyến hiển thị quãng đường, thời gian di chuyển và giờ đến dự kiến.
+- Có lựa chọn làn **trái / giữa / phải**. AI ưu tiên vùng cụm đèn theo làn đã chọn nhưng vẫn quét toàn cảnh định kỳ để tránh bỏ sót.
+- Bổ sung truy vấn điểm camera tốc độ/giám sát, giao cắt đường sắt và trạm thu phí từ dữ liệu OpenStreetMap/Overpass; cache cùng biển và đèn để dùng lại khi mất mạng.
+- Cảnh báo bản đồ gần xe hiển thị nổi trên video và đọc bằng tiếng Việt; Android Auto nhận thêm làn đang ưu tiên.
+- Giao diện màu xanh đậm, thẻ bo tròn, đồng hồ tốc độ và biển giới hạn dạng tròn để nhìn nhanh khi lái xe.
+
+TrafficAI không dùng dữ liệu giao thông thời gian thực hoặc cơ sở dữ liệu độc quyền của VietMap. Các điểm cảnh báo bản đồ chỉ xuất hiện khi OpenStreetMap có dữ liệu tương ứng và không được coi là danh sách camera/phạt nguội đầy đủ.
 
 ## Vá lỗi 2.2.2: giảm bỏ sót biển ở xa
 
@@ -11,7 +23,7 @@
 - Màn hình AI hiển thị `BIỂN RAW` và `TRACK` để phân biệt model không thấy biển với bộ xác nhận chưa đủ phiếu.
 - Giọng nói ưu tiên nguy hiểm, màu đèn/số giây rồi mới đọc biển; cùng một track không bị đọc lặp liên tục.
 
-Bản vá này cải thiện 82 lớp hiện có và chưa bổ sung model nhận diện biển ngoài tập huấn luyện. Detector biển tổng quát và bộ phân loại theo mã QCVN được để dành cho nhánh 2.3 vì cần thêm model/dữ liệu thực địa.
+Bản vá này cải thiện 82 lớp hiện có và chưa bổ sung model nhận diện biển ngoài tập huấn luyện. Detector biển tổng quát và bộ phân loại theo mã QCVN được để dành cho nhánh sau vì cần thêm model/dữ liệu thực địa.
 
 ## Bản 2.2: dữ liệu biển/đèn OSM, tìm giọng nói và dẫn đường
 
@@ -23,7 +35,7 @@ Bản vá này cải thiện 82 lớp hiện có và chưa bổ sung model nhậ
 - Tọa độ gửi tới Overpass được làm tròn khoảng 1 km trước khi truy vấn bán kính 5 km, không gửi GPS chính xác.
 - Phân biệt rõ “đã kết nối nhưng khu vực chưa có dữ liệu” với “máy chủ lỗi hoặc mạng chặn”.
 
-- Nạp các node `highway=traffic_signals`, `traffic_sign`, `stop` và `give_way` trong bán kính 5 km qua Overpass; cache SQLite để lần sau vẫn hiển thị khi mất mạng.
+- Nạp các node `highway=traffic_signals`, `traffic_sign`, `stop`, `give_way`, `speed_camera`, `railway=level_crossing` và `barrier=toll_booth` trong bán kính 5 km qua Overpass; cache SQLite để lần sau vẫn hiển thị khi mất mạng.
 - Gộp marker OSM với các điểm biển/đèn do AI Map Memory học được. Marker ghi rõ nguồn OSM hay điểm AI đã xác nhận.
 - Tìm điểm đến tiếng Việt bằng Nominatim chỉ khi người dùng bấm **ĐI** hoặc **NÓI**; không có autocomplete, giới hạn một luồng truy vấn và cache kết quả 30 ngày.
 - Nhận điểm đến qua `RecognizerIntent` tiếng Việt; kết quả được đưa thẳng vào ô tìm kiếm và tạo tuyến.
@@ -57,7 +69,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.2.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.3 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

@@ -4,6 +4,7 @@ package vn.bachphuc.trafficai;
 public final class LandmarkHint {
     public static final String TYPE_LIGHT = "LIGHT";
     public static final String TYPE_SIGN = "SIGN";
+    public static final String TYPE_ALERT = "ALERT";
     public static final LandmarkHint NONE = new LandmarkHint(
             -1L, "", "", .75f, .38f, Double.POSITIVE_INFINITY, 0);
 
@@ -42,6 +43,10 @@ public final class LandmarkHint {
 
     public boolean expectsSign() {
         return isActive() && TYPE_SIGN.equals(type);
+    }
+
+    public boolean isMapAlert() {
+        return isActive() && TYPE_ALERT.equals(type);
     }
 
     private static float clamp(float value, float low, float high) {

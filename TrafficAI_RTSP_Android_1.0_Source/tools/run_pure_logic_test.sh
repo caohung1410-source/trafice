@@ -12,6 +12,7 @@ sources=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoadGeometryPrior.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/SignDecisionPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/SignTrackMath.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/LanePreference.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/GeoMath.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoutePlan.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationInstruction.java"

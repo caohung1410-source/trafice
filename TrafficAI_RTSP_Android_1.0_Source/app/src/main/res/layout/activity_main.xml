@@ -1,504 +1,694 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#07111F"
-    android:orientation="vertical"
-    android:padding="10dp">
+    android:background="@drawable/app_background">
 
     <LinearLayout
+        android:id="@+id/drivingScreen"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="TrafficAI 2.2.2 • Sign Tracker"
-                android:textColor="#FFFFFF"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Biển/đèn OSM • tìm bằng giọng nói • định tuyến"
-                android:textColor="#90A8C0"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/mapButton"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:text="BẢN ĐỒ" />
-
-        <Button
-            android:id="@+id/toggleSettingsButton"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:text="ẨN" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/settingsPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:background="@drawable/panel_background"
-        android:orientation="vertical">
-
-        <EditText
-            android:id="@+id/fullUrlInput"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:hint="URL RTSP đầy đủ (ưu tiên nếu có)"
-            android:inputType="textUri"
-            android:singleLine="true"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#7890A8"
-            android:textSize="13sp" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="9dp">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/hostInput"
-                android:layout_width="0dp"
-                android:layout_height="46dp"
-                android:layout_weight="2"
-                android:hint="IP camera"
-                android:inputType="textUri"
-                android:singleLine="true"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#7890A8" />
-
-            <EditText
-                android:id="@+id/portInput"
-                android:layout_width="72dp"
-                android:layout_height="46dp"
-                android:hint="Port"
-                android:inputType="number"
-                android:singleLine="true"
-                android:text="554"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#7890A8" />
-
-            <EditText
-                android:id="@+id/userInput"
-                android:layout_width="0dp"
-                android:layout_height="46dp"
-                android:layout_weight="1"
-                android:hint="User"
-                android:singleLine="true"
-                android:text="admin"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#7890A8" />
-        </LinearLayout>
-
-        <EditText
-            android:id="@+id/passwordInput"
-            android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:hint="Mật khẩu / Safety Code (không lưu)"
-            android:inputType="textPassword"
-            android:singleLine="true"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#7890A8" />
-
-        <EditText
-            android:id="@+id/pathInput"
-            android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:hint="Đường dẫn RTSP"
-            android:singleLine="true"
-            android:text="/cam/realmonitor?channel=1&amp;subtype=0&amp;unicast=true&amp;proto=Onvif"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#7890A8"
-            android:textSize="12sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="52dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/subStreamButton"
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:contentDescription="TrafficAI"
+                android:src="@drawable/ic_traffic_auto" />
+
+            <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:text="IMOU SUB 1" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TrafficAI Drive 2.3"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/driveModeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TRỢ LÝ LÁI XE • ARM64"
+                    android:textColor="#7ED4FF"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <Button
-                android:id="@+id/mainStreamButton"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:text="MAIN 0" />
+                android:id="@+id/mapButton"
+                android:layout_width="76dp"
+                android:layout_height="42dp"
+                android:background="@drawable/lane_button"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:text="MAP"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
-            <CheckBox
-                android:id="@+id/tcpCheck"
-                android:layout_width="wrap_content"
+            <ImageButton
+                android:id="@+id/toggleSettingsButton"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="7dp"
+                android:background="@drawable/icon_button"
+                android:contentDescription="Mở cài đặt"
+                android:padding="10dp"
+                android:src="@drawable/ic_settings" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navigationPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/navigation_card"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:checked="true"
-                android:text="RTP/TCP"
-                android:textColor="#DCEBFA" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/destinationSearchInput"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#87B8D0"
+                    android:hint="Tìm điểm đến hoặc nói…"
+                    android:imeOptions="actionGo"
+                    android:inputType="textPostalAddress"
+                    android:paddingStart="8dp"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#B0C8D8"
+                    android:textSize="13sp" />
+
+                <ImageButton
+                    android:id="@+id/voiceSearchButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="5dp"
+                    android:background="@drawable/icon_button"
+                    android:contentDescription="Tìm bằng giọng nói"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_mic" />
+
+                <ImageButton
+                    android:id="@+id/routeButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="5dp"
+                    android:background="@drawable/icon_button"
+                    android:contentDescription="Bắt đầu tìm đường"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_route" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/navigationInfo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:text="Chưa chọn điểm đến"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tripSummaryText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="GPS sẽ hiển thị quãng đường và thời gian dự kiến"
+                        android:textColor="#9BC3D9"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/clearRouteButton"
+                    android:layout_width="64dp"
+                    android:layout_height="34dp"
+                    android:background="@drawable/lane_button"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:text="DỪNG"
+                    android:textColor="#FFFFFF"
+                    android:textSize="9sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="38dp"
+            android:layout_marginTop="5dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/connectButton"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:text="KẾT NỐI" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingEnd="6dp"
+                android:text="ƯU TIÊN LÀN"
+                android:textColor="#90A9BE"
+                android:textSize="9sp"
+                android:textStyle="bold" />
 
             <Button
-                android:id="@+id/disconnectButton"
+                android:id="@+id/laneLeftButton"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:text="NGẮT" />
+                android:background="@drawable/lane_button"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:text="← TRÁI"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
 
             <Button
-                android:id="@+id/initAiButton"
+                android:id="@+id/laneCenterButton"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:text="TẢI / MỞ AI" />
+                android:background="@drawable/lane_button"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:text="↑ GIỮA"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/laneRightButton"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:background="@drawable/lane_button"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:text="PHẢI →"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/testSpeechButton"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:text="THỬ GIỌNG CẢNH BÁO" />
-
-        <Button
-            android:id="@+id/downloadMapButton"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:text="TẢI MAP OFFLINE QUANH ĐÂY 25 KM" />
-
         <TextView
+            android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:paddingTop="4dp"
-            android:text="DỊCH VỤ MỞ • CÓ THỂ THAY MÁY CHỦ KHÔNG CẦN CẬP NHẬT APP"
-            android:textColor="#90A8C0"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:paddingBottom="3dp"
+            android:paddingTop="2dp"
+            android:text="Sẵn sàng • mở ⚙ để kết nối camera và AI"
+            android:textColor="#8DE7B0"
             android:textSize="10sp" />
 
-        <EditText
-            android:id="@+id/geocoderUrlInput"
+        <ProgressBar
+            android:id="@+id/modelProgress"
+            style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
-            android:layout_height="38dp"
-            android:hint="Máy chủ tìm kiếm Nominatim"
-            android:inputType="textUri"
-            android:singleLine="true"
-            android:text="https://nominatim.openstreetmap.org"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp" />
+            android:layout_height="3dp"
+            android:max="100"
+            android:progress="0" />
 
-        <EditText
-            android:id="@+id/routingUrlInput"
+        <FrameLayout
+            android:id="@+id/videoFrame"
             android:layout_width="match_parent"
-            android:layout_height="38dp"
-            android:hint="Máy chủ định tuyến OSRM"
-            android:inputType="textUri"
-            android:singleLine="true"
-            android:text="https://router.project-osrm.org"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp" />
+            android:layout_height="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_weight="1"
+            android:background="#000000"
+            android:minHeight="190dp">
 
-        <EditText
-            android:id="@+id/overpassUrlInput"
+            <org.maplibre.android.maps.MapView
+                android:id="@+id/baseMapView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <vn.bachphuc.trafficai.OfflineGpsView
+                android:id="@+id/mapView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/playerView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:resize_mode="fit"
+                app:show_buffering="always"
+                app:surface_type="texture_view"
+                app:use_controller="false" />
+
+            <vn.bachphuc.trafficai.DetectionOverlayView
+                android:id="@+id/overlayView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/aiBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_margin="7dp"
+                android:background="#C10A1522"
+                android:padding="6dp"
+                android:text="AI: CHƯA MỞ"
+                android:textColor="#FFFFFF"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/roadAlertBanner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_margin="7dp"
+                android:background="@drawable/alert_banner"
+                android:maxWidth="270dp"
+                android:text="ĐANG QUAN SÁT PHÍA TRƯỚC"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|start"
+                android:layout_margin="8dp"
+                android:gravity="bottom"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/speedResult"
+                    android:layout_width="78dp"
+                    android:layout_height="78dp"
+                    android:background="@drawable/speed_gauge_background"
+                    android:gravity="center"
+                    android:text="GPS\n—"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/speedLimitResult"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginStart="7dp"
+                    android:background="@drawable/speed_limit_background"
+                    android:gravity="center"
+                    android:text="GIỚI HẠN\n—"
+                    android:textColor="#152130"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="38dp"
-            android:hint="Máy chủ dữ liệu biển/đèn Overpass"
-            android:inputType="textUri"
-            android:singleLine="true"
-            android:text="https://overpass-api.de/api/interpreter"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/lightResult"
+                android:layout_width="0dp"
+                android:layout_height="58dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/dashboard_card"
+                android:gravity="center"
+                android:text="ĐÈN\n—"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/countdownResult"
+                android:layout_width="0dp"
+                android:layout_height="58dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="0.8"
+                android:background="@drawable/dashboard_card"
+                android:gravity="center"
+                android:text="GIÂY\n—"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/signResult"
+                android:layout_width="0dp"
+                android:layout_height="58dp"
+                android:layout_weight="1.8"
+                android:background="@drawable/dashboard_card"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="3"
+                android:text="BIỂN BÁO\n—"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/hazardResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/dashboard_card"
+            android:gravity="center"
+            android:maxLines="2"
+            android:minHeight="42dp"
+            android:text="PHÍA TRƯỚC • ĐANG QUAN SÁT"
+            android:textColor="#DDEEFF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/navigationPanel"
+    <FrameLayout
+        android:id="@+id/settingsPanel"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:background="@drawable/panel_background"
-        android:orientation="vertical"
-        android:padding="4dp"
+        android:layout_height="match_parent"
+        android:background="#F207111F"
+        android:clickable="true"
+        android:elevation="24dp"
+        android:focusable="true"
         android:visibility="gone">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="12dp">
 
-            <EditText
-                android:id="@+id/destinationSearchInput"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="CÀI ĐẶT TRAFFICAI 2.3"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/closeSettingsButton"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="@drawable/icon_button"
+                    android:contentDescription="Đóng cài đặt"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_close" />
+            </LinearLayout>
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
                 android:layout_weight="1"
-                android:hint="Nhập hoặc nói điểm đến"
-                android:imeOptions="actionGo"
-                android:inputType="textPostalAddress"
-                android:singleLine="true"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#7890A8"
-                android:textSize="13sp" />
+                android:fillViewport="true">
 
-            <Button
-                android:id="@+id/voiceSearchButton"
-                android:layout_width="64dp"
-                android:layout_height="44dp"
-                android:text="NÓI" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
 
-            <Button
-                android:id="@+id/routeButton"
-                android:layout_width="60dp"
-                android:layout_height="44dp"
-                android:text="ĐI" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:text="CAMERA RTSP • IMOU C22E-A"
+                        android:textColor="#66C7FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/panel_background"
+                        android:orientation="vertical">
+
+                        <EditText
+                            android:id="@+id/fullUrlInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="46dp"
+                            android:hint="URL RTSP đầy đủ (ưu tiên nếu có)"
+                            android:inputType="textUri"
+                            android:singleLine="true"
+                            android:textColor="#FFFFFF"
+                            android:textColorHint="#7890A8"
+                            android:textSize="12sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <EditText
+                                android:id="@+id/hostInput"
+                                android:layout_width="0dp"
+                                android:layout_height="44dp"
+                                android:layout_weight="2"
+                                android:hint="IP camera"
+                                android:inputType="textUri"
+                                android:singleLine="true"
+                                android:textColor="#FFFFFF"
+                                android:textColorHint="#7890A8" />
+
+                            <EditText
+                                android:id="@+id/portInput"
+                                android:layout_width="70dp"
+                                android:layout_height="44dp"
+                                android:hint="Port"
+                                android:inputType="number"
+                                android:singleLine="true"
+                                android:text="554"
+                                android:textColor="#FFFFFF" />
+
+                            <EditText
+                                android:id="@+id/userInput"
+                                android:layout_width="0dp"
+                                android:layout_height="44dp"
+                                android:layout_weight="1"
+                                android:hint="User"
+                                android:singleLine="true"
+                                android:text="admin"
+                                android:textColor="#FFFFFF" />
+                        </LinearLayout>
+
+                        <EditText
+                            android:id="@+id/passwordInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:hint="Mật khẩu / Safety Code (không lưu)"
+                            android:inputType="textPassword"
+                            android:singleLine="true"
+                            android:textColor="#FFFFFF"
+                            android:textColorHint="#7890A8" />
+
+                        <EditText
+                            android:id="@+id/pathInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:hint="Đường dẫn RTSP"
+                            android:singleLine="true"
+                            android:text="/cam/realmonitor?channel=1&amp;subtype=0&amp;unicast=true&amp;proto=Onvif"
+                            android:textColor="#FFFFFF"
+                            android:textSize="10sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/subStreamButton"
+                                android:layout_width="0dp"
+                                android:layout_height="42dp"
+                                android:layout_weight="1"
+                                android:text="IMOU SUB 1" />
+
+                            <Button
+                                android:id="@+id/mainStreamButton"
+                                android:layout_width="0dp"
+                                android:layout_height="42dp"
+                                android:layout_weight="1"
+                                android:text="MAIN 0" />
+
+                            <CheckBox
+                                android:id="@+id/tcpCheck"
+                                android:layout_width="wrap_content"
+                                android:layout_height="42dp"
+                                android:checked="true"
+                                android:text="TCP"
+                                android:textColor="#DCEBFA" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/connectButton"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1"
+                                android:text="KẾT NỐI" />
+
+                            <Button
+                                android:id="@+id/disconnectButton"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1"
+                                android:text="NGẮT" />
+
+                            <Button
+                                android:id="@+id/initAiButton"
+                                android:layout_width="0dp"
+                                android:layout_height="46dp"
+                                android:layout_weight="1"
+                                android:text="MỞ AI" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:paddingTop="12dp"
+                        android:text="GIỌNG NÓI • TỐC ĐỘ THỦ CÔNG"
+                        android:textColor="#66C7FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/testSpeechButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:text="THỬ GIỌNG CẢNH BÁO" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button android:id="@+id/limit40Button" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="40" />
+                        <Button android:id="@+id/limit50Button" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="50" />
+                        <Button android:id="@+id/limit60Button" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="60" />
+                        <Button android:id="@+id/limit80Button" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="80" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:paddingTop="12dp"
+                        android:text="BẢN ĐỒ • DỮ LIỆU GIAO THÔNG"
+                        android:textColor="#66C7FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/refreshTrafficMapButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:text="NẠP BIỂN / ĐÈN / CAMERA OSM" />
+
+                    <Button
+                        android:id="@+id/downloadMapButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:text="TẢI MAP OFFLINE QUANH ĐÂY 25 KM" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="3dp"
+                        android:paddingTop="6dp"
+                        android:text="MÁY CHỦ MỞ • CHỈ THAY KHI DỊCH VỤ MẶC ĐỊNH BỊ CHẶN"
+                        android:textColor="#90A8C0"
+                        android:textSize="9sp" />
+
+                    <EditText
+                        android:id="@+id/geocoderUrlInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:hint="Máy chủ tìm kiếm Nominatim"
+                        android:inputType="textUri"
+                        android:singleLine="true"
+                        android:text="https://nominatim.openstreetmap.org"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <EditText
+                        android:id="@+id/routingUrlInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:hint="Máy chủ định tuyến OSRM"
+                        android:inputType="textUri"
+                        android:singleLine="true"
+                        android:text="https://router.project-osrm.org"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <EditText
+                        android:id="@+id/overpassUrlInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:hint="Máy chủ dữ liệu Overpass"
+                        android:inputType="textUri"
+                        android:singleLine="true"
+                        android:text="https://overpass-api.de/api/interpreter"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <Space
+                        android:layout_width="match_parent"
+                        android:layout_height="30dp" />
+                </LinearLayout>
+            </ScrollView>
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/navigationInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="5dp"
-            android:text="Chưa chọn điểm đến"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/refreshTrafficMapButton"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_weight="1"
-                android:text="NẠP BIỂN / ĐÈN OSM" />
-
-            <Button
-                android:id="@+id/clearRouteButton"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_weight="1"
-                android:text="DỪNG DẪN ĐƯỜNG" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/statusText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingBottom="6dp"
-        android:paddingTop="6dp"
-        android:text="Giao diện sẵn sàng • chưa kết nối camera"
-        android:textColor="#8DE7B0"
-        android:textSize="13sp" />
-
-    <ProgressBar
-        android:id="@+id/modelProgress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="5dp"
-        android:max="100"
-        android:progress="0" />
-
-    <FrameLayout
-        android:id="@+id/videoFrame"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="6dp"
-        android:layout_weight="1"
-        android:background="#000000">
-
-        <org.maplibre.android.maps.MapView
-            android:id="@+id/baseMapView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
-
-        <vn.bachphuc.trafficai.OfflineGpsView
-            android:id="@+id/mapView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
-
-        <androidx.media3.ui.PlayerView
-            android:id="@+id/playerView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            app:resize_mode="fit"
-            app:show_buffering="always"
-            app:surface_type="texture_view"
-            app:use_controller="false" />
-
-        <vn.bachphuc.trafficai.DetectionOverlayView
-            android:id="@+id/overlayView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-        <TextView
-            android:id="@+id/aiBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="top|end"
-            android:background="#B0000000"
-            android:padding="7dp"
-            android:text="AI: CHƯA MỞ"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
     </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="7dp"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/lightResult"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/result_background"
-            android:gravity="center"
-            android:text="ĐÈN\n—"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/countdownResult"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/result_background"
-            android:gravity="center"
-            android:text="GIÂY\n—"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/signResult"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.6"
-            android:background="@drawable/result_background"
-            android:gravity="center"
-            android:maxLines="3"
-            android:text="BIỂN BÁO\n—"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/speedResult"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/result_background"
-            android:gravity="center"
-            android:text="TỐC ĐỘ GPS\n—"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/speedLimitResult"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/result_background"
-            android:gravity="center"
-            android:text="GIỚI HẠN\n—"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/hazardResult"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.35"
-            android:background="@drawable/result_background"
-            android:gravity="center"
-            android:maxLines="3"
-            android:text="PHÍA TRƯỚC\nĐANG QUAN SÁT"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/limit40Button"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:text="40" />
-
-        <Button
-            android:id="@+id/limit50Button"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:text="50" />
-
-        <Button
-            android:id="@+id/limit60Button"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:text="60" />
-
-        <Button
-            android:id="@+id/limit80Button"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:text="80" />
-    </LinearLayout>
-</LinearLayout>
+</FrameLayout>

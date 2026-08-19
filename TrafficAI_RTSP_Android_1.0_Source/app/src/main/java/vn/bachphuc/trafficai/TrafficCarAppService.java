@@ -21,7 +21,9 @@ public final class TrafficCarAppService extends CarAppService {
     @NonNull
     @Override
     public HostValidator createHostValidator() {
-        // Chỉ chấp nhận các Android Auto / Automotive host chính thức do Car App Library cung cấp.
+        // APK debug cá nhân phải cho phép Android Auto host trên xe kết nối khi đã bật
+        // Developer mode/Unknown sources. Bản release vẫn dùng allowlist chữ ký chính thức.
+        if (BuildConfig.DEBUG) return HostValidator.ALLOW_ALL_HOSTS_VALIDATOR;
         return new HostValidator.Builder(this)
                 .addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample)
                 .build();
@@ -76,6 +78,7 @@ public final class TrafficCarAppService extends CarAppService {
                     : "Chưa có giới hạn • đặt trên điện thoại";
             String signal = value.light;
             if (value.countdown != null) signal += " • còn " + value.countdown + " giây";
+            signal += value.targetLocked ? " • đã khóa mục tiêu" : " • đang quét";
 
             Pane.Builder pane = new Pane.Builder()
                     .addRow(new Row.Builder()
@@ -87,8 +90,9 @@ public final class TrafficCarAppService extends CarAppService {
                             .addText("AI chạy trên điện thoại")
                             .build())
                     .addRow(new Row.Builder()
-                            .setTitle("Biển báo")
-                            .addText(value.sign)
+                            .setTitle("Nhận biết giao thông")
+                            .addText("Biển: " + value.sign)
+                            .addText("Phía trước: " + value.hazard)
                             .build())
                     .addRow(new Row.Builder()
                             .setTitle(value.cameraConnected ? "Camera RTSP đã kết nối" : "Chưa kết nối camera")
@@ -96,7 +100,7 @@ public final class TrafficCarAppService extends CarAppService {
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI • Android Auto thử nghiệm")
+                    .setTitle("TrafficAI 2.0 • ADAS Assist")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
         }

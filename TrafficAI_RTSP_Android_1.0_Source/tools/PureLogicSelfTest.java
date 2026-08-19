@@ -44,6 +44,9 @@ public final class PureLogicSelfTest {
                 "Không được cắt cứng biển nhắc lại bên trái");
         require(RoadGeometryPrior.adjustConfidence(.20f, 1f) <= .20f,
                 "Prior không được tự nâng phát hiện yếu");
+        require(RoadGeometryPrior.travelDirectionEvidence(.52f, .20f)
+                        > RoadGeometryPrior.travelDirectionEvidence(.04f, .70f),
+                "Đèn cao theo hướng xe phải ưu tiên hơn đèn thấp ngoài luồng giao thông");
 
         System.out.println("PureLogicSelfTest: PASS");
     }

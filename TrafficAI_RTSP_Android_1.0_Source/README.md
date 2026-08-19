@@ -1,6 +1,18 @@
-# TrafficAI RTSP 1.4 • Realtime ARM64
+# TrafficAI 2.0 • ADAS Assist ARM64
 
-Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Kiến trúc thị giác video trong bản 2.0
+
+- Giữ mục tiêu đèn bằng tracker vận tốc/IoU qua nhiều khung hình để giảm đổi nhầm sang cột khác.
+- Khi đã khóa đèn, model nhìn tập trung vào vùng quanh mục tiêu; cứ bốn lượt lại quét toàn cảnh để chống mất dấu.
+- Kết hợp độ tin cậy, độ mới và đồng thuận nhiều frame trước khi đổi màu đèn hoặc nhận số giây.
+- Biển cùng loại nhưng nằm ở vị trí khác không còn bị cộng phiếu đồng thuận với nhau.
+- Cùng lượt model COCO nhận đèn được tận dụng để quan sát người, xe đạp, xe máy, ô tô, xe buýt và xe tải phía trước; không chạy thêm model nặng.
+- Android Auto debug chấp nhận host thử nghiệm khi điện thoại đã bật Developer mode và Unknown sources; màn hình xe chỉ hiển thị dữ liệu, không chiếu video.
+- Giao diện báo đúng FPS kết quả thực tế thay vì FPS ước tính.
+
+Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
 Bản APK 1.3.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 

@@ -70,6 +70,23 @@ public final class RoadGeometryPrior {
         return clamp(detector * (0.72f + 0.28f * geometry), 0f, 1f);
     }
 
+    /**
+     * Mức phù hợp với hướng xe đang chạy, dùng để giảm nhầm đèn thấp của luồng giao cắt.
+     * Đây vẫn là prior mềm vì chưa có hiệu chuẩn camera/vạch làn chính xác.
+     */
+    public static float travelDirectionEvidence(float centerX, float centerY) {
+        float x = clamp01(centerX);
+        float y = clamp01(centerY);
+        float overheadCurrentLane = range(x, 0.22f, 0.82f, 0.20f)
+                * range(y, 0.01f, 0.50f, 0.16f);
+        float rightCurrentLane = 0.94f * range(x, 0.58f, 1.00f, 0.18f)
+                * range(y, 0.06f, 0.68f, 0.16f);
+        float leftRepeat = 0.58f * range(x, 0.00f, 0.36f, 0.14f)
+                * range(y, 0.04f, 0.56f, 0.14f);
+        return clamp(Math.max(0.20f, Math.max(overheadCurrentLane,
+                Math.max(rightCurrentLane, leftRepeat))), 0f, 1f);
+    }
+
     private static float range(float value, float low, float high, float feather) {
         if (value >= low && value <= high) return 1f;
         if (value < low) return clamp01((value - (low - feather)) / feather);

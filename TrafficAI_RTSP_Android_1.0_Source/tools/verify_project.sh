@@ -11,6 +11,8 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoadGeometryPrior.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/TemporalObjectTracker.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/ForwardHazardAnalyzer.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/YoloDetector.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CarTelemetryStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficCarAppService.java"
@@ -39,4 +41,4 @@ if rg -n 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
 fi
 
 bash "$project_root/tools/run_pure_logic_test.sh"
-echo "verify_project: PASS • 82 labels • Android Auto descriptor • XML OK • credential persistence check OK"
+echo "verify_project: PASS • TrafficAI 2.0 tracker/hazard • 82 labels • Android Auto • XML/credential OK"

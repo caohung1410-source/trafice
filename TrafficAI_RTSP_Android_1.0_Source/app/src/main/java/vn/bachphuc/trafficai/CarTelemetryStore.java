@@ -16,6 +16,8 @@ public final class CarTelemetryStore {
         public final String light;
         public final Integer countdown;
         public final String sign;
+        public final String hazard;
+        public final boolean targetLocked;
         public final boolean cameraConnected;
         public final boolean aiReady;
 
@@ -26,6 +28,8 @@ public final class CarTelemetryStore {
                 String light,
                 Integer countdown,
                 String sign,
+                String hazard,
+                boolean targetLocked,
                 boolean cameraConnected,
                 boolean aiReady) {
             this.speedKmh = speedKmh;
@@ -34,6 +38,8 @@ public final class CarTelemetryStore {
             this.light = light;
             this.countdown = countdown;
             this.sign = sign;
+            this.hazard = hazard;
+            this.targetLocked = targetLocked;
             this.cameraConnected = cameraConnected;
             this.aiReady = aiReady;
         }
@@ -47,6 +53,8 @@ public final class CarTelemetryStore {
     private static volatile String light = "Chưa thấy";
     private static volatile Integer countdown;
     private static volatile String sign = "Chưa thấy";
+    private static volatile String hazard = "Đang quan sát";
+    private static volatile boolean targetLocked;
     private static volatile boolean cameraConnected;
     private static volatile boolean aiReady;
 
@@ -56,6 +64,7 @@ public final class CarTelemetryStore {
     public static State snapshot() {
         return new State(
                 speedKmh, speedLimitKmh, limitSource, light, countdown, sign,
+                hazard, targetLocked,
                 cameraConnected, aiReady);
     }
 
@@ -75,6 +84,9 @@ public final class CarTelemetryStore {
         light = result.lightState == TrafficState.UNKNOWN ? "Chưa chắc" : result.lightState.vi;
         countdown = result.countdown;
         sign = result.signText == null || result.signText.isEmpty() ? "Chưa thấy" : result.signText;
+        hazard = result.hazardText == null || result.hazardText.isEmpty()
+                ? "Đang quan sát" : result.hazardText;
+        targetLocked = result.targetLocked;
         notifyListeners();
     }
 

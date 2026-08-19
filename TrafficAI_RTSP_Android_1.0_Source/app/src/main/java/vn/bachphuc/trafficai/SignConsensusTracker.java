@@ -21,6 +21,12 @@ public final class SignConsensusTracker {
                 queue = new ArrayDeque<>();
                 samples.put(detection.classId, queue);
             }
+            Sample previous = queue.peekLast();
+            if (previous != null && nowMs - previous.at < 1_500L
+                    && spatialAffinity(previous.detection, detection) < 0.22f) {
+                // Cùng loại biển nhưng ở hai vị trí khác nhau không được cộng phiếu.
+                continue;
+            }
             queue.addLast(new Sample(detection, nowMs));
         }
 
@@ -51,6 +57,25 @@ public final class SignConsensusTracker {
     public synchronized void reset() {
         samples.clear();
         stable = null;
+    }
+
+    private static float spatialAffinity(Detection first, Detection second) {
+        float left = Math.max(first.box.left, second.box.left);
+        float top = Math.max(first.box.top, second.box.top);
+        float right = Math.min(first.box.right, second.box.right);
+        float bottom = Math.min(first.box.bottom, second.box.bottom);
+        float intersection = Math.max(0f, right - left) * Math.max(0f, bottom - top);
+        float union = first.box.width() * first.box.height()
+                + second.box.width() * second.box.height() - intersection;
+        float iou = intersection / Math.max(1e-5f, union);
+        float dx = first.box.centerX() - second.box.centerX();
+        float dy = first.box.centerY() - second.box.centerY();
+        float diagonal = (float) Math.hypot(
+                Math.max(first.box.width(), second.box.width()),
+                Math.max(first.box.height(), second.box.height()));
+        float proximity = Math.max(0f, 1f - (float) Math.hypot(dx, dy)
+                / Math.max(10f, diagonal * 3f));
+        return Math.min(1f, iou * 0.58f + proximity * 0.42f);
     }
 
     private static final class Sample {

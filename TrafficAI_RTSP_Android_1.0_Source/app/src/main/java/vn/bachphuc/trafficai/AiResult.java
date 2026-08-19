@@ -11,6 +11,9 @@ public final class AiResult {
     public final Integer countdown;
     public final String signText;
     public final float signConfidence;
+    public final String hazardText;
+    public final float hazardConfidence;
+    public final boolean targetLocked;
     public final long inferenceMs;
     public final String engineStatus;
 
@@ -21,6 +24,9 @@ public final class AiResult {
             Integer countdown,
             String signText,
             float signConfidence,
+            String hazardText,
+            float hazardConfidence,
+            boolean targetLocked,
             long inferenceMs,
             String engineStatus) {
         this.detections = Collections.unmodifiableList(new ArrayList<>(detections));
@@ -29,6 +35,9 @@ public final class AiResult {
         this.countdown = countdown;
         this.signText = signText == null ? "" : signText;
         this.signConfidence = signConfidence;
+        this.hazardText = hazardText == null ? "" : hazardText;
+        this.hazardConfidence = hazardConfidence;
+        this.targetLocked = targetLocked;
         this.inferenceMs = inferenceMs;
         this.engineStatus = engineStatus == null ? "" : engineStatus;
     }
@@ -36,6 +45,6 @@ public final class AiResult {
     public static AiResult idle(String status) {
         return new AiResult(
                 Collections.emptyList(), TrafficState.UNKNOWN, 0f,
-                null, "", 0f, 0L, status);
+                null, "", 0f, "", 0f, false, 0L, status);
     }
 }

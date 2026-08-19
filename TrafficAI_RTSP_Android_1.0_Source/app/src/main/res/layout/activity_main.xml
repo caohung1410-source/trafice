@@ -22,7 +22,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="TrafficAI RTSP 1.4 Realtime ARM64"
+                android:text="TrafficAI 2.0 • ADAS Assist"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp"
                 android:textStyle="bold" />
@@ -30,7 +30,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="RTSP H.264 • mic camera tắt • ưu tiên cột bên phải"
+                android:text="Theo dõi mục tiêu • nhớ nhiều khung • cảnh báo phía trước"
                 android:textColor="#90A8C0"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -318,12 +318,26 @@
             android:id="@+id/speedLimitResult"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
             android:layout_weight="1"
             android:background="@drawable/result_background"
             android:gravity="center"
             android:text="GIỚI HẠN\n—"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/hazardResult"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.35"
+            android:background="@drawable/result_background"
+            android:gravity="center"
+            android:maxLines="3"
+            android:text="PHÍA TRƯỚC\nĐANG QUAN SÁT"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
 

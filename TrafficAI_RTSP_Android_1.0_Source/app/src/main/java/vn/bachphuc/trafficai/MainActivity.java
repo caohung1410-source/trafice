@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int LOCATION_PERMISSION_REQUEST = 1201;
-    private static final long FRAME_INTERVAL_MS = 90L;
+    private static final long FRAME_INTERVAL_MS = 40L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
     private static final Pattern SPEED_LIMIT_PATTERN = Pattern.compile(
@@ -70,6 +70,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private TextView signResult;
     private TextView speedResult;
     private TextView speedLimitResult;
+    private TextView hazardResult;
     private ProgressBar modelProgress;
     private Button initAiButton;
     private Button mapButton;
@@ -95,6 +96,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private long lastCountdownSpeechAt;
     private long overSpeedSince;
     private long lastOverSpeedSpeechAt;
+    private long lastHazardSpeechAt;
+    private String lastSpokenHazard = "";
+    private long lastAiResultAt;
+    private float smoothedAiFps;
 
     private LocationManager locationManager;
     private Location lastLocation;
@@ -156,6 +161,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         signResult = findViewById(R.id.signResult);
         speedResult = findViewById(R.id.speedResult);
         speedLimitResult = findViewById(R.id.speedLimitResult);
+        hazardResult = findViewById(R.id.hazardResult);
         modelProgress = findViewById(R.id.modelProgress);
         initAiButton = findViewById(R.id.initAiButton);
         mapButton = findViewById(R.id.mapButton);
@@ -329,7 +335,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("AI đèn: OK • AI biển VN 82 lớp: OK • LED countdown: OK");
+                    setStatus("TrafficAI 2.0: theo dõi mục tiêu • AI biển VN • LED • cảnh báo trước xe");
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
@@ -379,9 +385,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         CarTelemetryStore.updateAi(result);
         updateLimitFromSign(result);
         overlayView.setResult(result, CAPTURE_WIDTH, CAPTURE_HEIGHT);
-        float effectiveFps = 1_000f / Math.max(1f, result.inferenceMs + FRAME_INTERVAL_MS);
-        aiBadge.setText("AI: " + result.inferenceMs + " ms • "
-                + String.format(Locale.US, "%.1f fps", effectiveFps));
+        long now = SystemClock.elapsedRealtime();
+        if (lastAiResultAt > 0L) {
+            float instantFps = 1_000f / Math.max(1f, now - lastAiResultAt);
+            smoothedAiFps = smoothedAiFps == 0f
+                    ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
+        }
+        lastAiResultAt = now;
+        aiBadge.setText("ADAS 2.0: " + result.inferenceMs + " ms • "
+                + String.format(Locale.US, "%.1f fps", smoothedAiFps)
+                + (result.targetLocked ? " • KHÓA" : " • QUÉT"));
 
         String light = result.lightState == TrafficState.UNKNOWN
                 ? "ĐÈN\nCHƯA CHẮC"
@@ -394,6 +407,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 ? "BIỂN BÁO\n—"
                 : "BIỂN BÁO\n" + result.signText + " "
                 + Math.round(result.signConfidence * 100f) + "%");
+        hazardResult.setText(result.hazardText.isEmpty()
+                ? "PHÍA TRƯỚC\nĐANG QUAN SÁT"
+                : "CẢNH BÁO\n" + result.hazardText + " "
+                + Math.round(result.hazardConfidence * 100f) + "%");
         speakStableResult(result);
     }
 
@@ -401,6 +418,17 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (!ttsReady) return;
         long now = SystemClock.elapsedRealtime();
         String signal = result.lightState == TrafficState.UNKNOWN ? "" : result.lightState.vi;
+        if (!result.hazardText.isEmpty()
+                && result.hazardConfidence >= 0.78f
+                && currentSpeedKmh >= 12
+                && (!result.hazardText.equals(lastSpokenHazard)
+                || now - lastHazardSpeechAt >= 8_000L)) {
+            speak("Chú ý, " + result.hazardText.toLowerCase(new Locale("vi", "VN")),
+                    TextToSpeech.QUEUE_FLUSH);
+            lastSpokenHazard = result.hazardText;
+            lastHazardSpeechAt = now;
+            return;
+        }
         if (!result.signText.isEmpty()
                 && (!result.signText.equals(lastSpokenSign) || now - lastSignSpeechAt > 12_000)) {
             speak("Biển báo, " + result.signText, TextToSpeech.QUEUE_FLUSH);
@@ -614,10 +642,15 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lightResult.setText("ĐÈN\n—");
         countdownResult.setText("GIÂY\n—");
         signResult.setText("BIỂN BÁO\n—");
+        hazardResult.setText("PHÍA TRƯỚC\nĐANG QUAN SÁT");
         lastSpokenSignal = "";
         lastSpokenSign = "";
         lastSpokenCountdown = null;
         lastCountdownSpeechAt = 0;
+        lastSpokenHazard = "";
+        lastHazardSpeechAt = 0L;
+        lastAiResultAt = 0L;
+        smoothedAiFps = 0f;
     }
 
     private void startFramePump() {

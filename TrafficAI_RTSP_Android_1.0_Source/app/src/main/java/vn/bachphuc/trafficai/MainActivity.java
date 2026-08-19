@@ -31,6 +31,7 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.rtsp.RtspMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -46,7 +47,7 @@ import java.util.regex.Pattern;
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int LOCATION_PERMISSION_REQUEST = 1201;
-    private static final long FRAME_INTERVAL_MS = 280L;
+    private static final long FRAME_INTERVAL_MS = 90L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
     private static final Pattern SPEED_LIMIT_PATTERN = Pattern.compile(
@@ -74,6 +75,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Button mapButton;
 
     private ExoPlayer player;
+    private Bitmap captureBitmap;
     private ModelRepository modelRepository;
     private volatile AiCoordinator aiCoordinator;
     private TextToSpeech textToSpeech;
@@ -209,7 +211,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void initPlayer() {
-        player = new ExoPlayer.Builder(this).build();
+        DefaultLoadControl lowLatencyLoadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(300, 1_000, 100, 250)
+                .setBackBuffer(0, false)
+                .build();
+        player = new ExoPlayer.Builder(this)
+                .setLoadControl(lowLatencyLoadControl)
+                .build();
         // Camera chỉ cung cấp hình cho AI. Tắt chọn audio track và đặt volume 0 để mic
         // camera không phát ra loa, không che giọng TTS cảnh báo.
         player.setTrackSelectionParameters(player.getTrackSelectionParameters()
@@ -342,7 +350,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             frameBusy.set(false);
             return;
         }
-        Bitmap frame = ((TextureView) surface).getBitmap(CAPTURE_WIDTH, CAPTURE_HEIGHT);
+        if (captureBitmap == null || captureBitmap.isRecycled()) {
+            captureBitmap = Bitmap.createBitmap(
+                    CAPTURE_WIDTH, CAPTURE_HEIGHT, Bitmap.Config.ARGB_8888);
+        }
+        Bitmap frame = ((TextureView) surface).getBitmap(captureBitmap);
         if (frame == null) {
             frameBusy.set(false);
             return;
@@ -357,7 +369,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             } catch (Throwable error) {
                 runOnUiThread(() -> aiBadge.setText("AI: LỖI FRAME"));
             } finally {
-                frame.recycle();
                 frameBusy.set(false);
             }
         });
@@ -368,7 +379,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         CarTelemetryStore.updateAi(result);
         updateLimitFromSign(result);
         overlayView.setResult(result, CAPTURE_WIDTH, CAPTURE_HEIGHT);
-        aiBadge.setText("AI: " + result.inferenceMs + " ms");
+        float effectiveFps = 1_000f / Math.max(1f, result.inferenceMs + FRAME_INTERVAL_MS);
+        aiBadge.setText("AI: " + result.inferenceMs + " ms • "
+                + String.format(Locale.US, "%.1f fps", effectiveFps));
 
         String light = result.lightState == TrafficState.UNKNOWN
                 ? "ĐÈN\nCHƯA CHẮC"

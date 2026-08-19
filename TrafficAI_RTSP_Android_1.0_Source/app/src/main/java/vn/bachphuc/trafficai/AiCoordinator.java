@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Set;
 
 public final class AiCoordinator implements AutoCloseable {
+    private static final long LIGHT_CACHE_MS = 1_600L;
+    private static final long SIGN_OVERLAY_CACHE_MS = 1_800L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
     private static final int SIGN_RED_LIGHT_CLASS = 55;
     private static final String[] COCO_LABELS = {
@@ -37,6 +39,11 @@ public final class AiCoordinator implements AutoCloseable {
     private final Set<Integer> trafficLightClass = new HashSet<>();
 
     private List<Detection> lastSigns = Collections.emptyList();
+    private Detection cachedLight;
+    private long cachedLightAt;
+    private long lastSignsAt;
+    private int analysisPhase;
+    private int lightPass;
     private int signTile;
     private int lightTile;
     private int errors;
@@ -52,60 +59,73 @@ public final class AiCoordinator implements AutoCloseable {
     public synchronized AiResult analyze(Bitmap frame, long nowMs) {
         long started = SystemClock.elapsedRealtime();
         List<Detection> overlay = new ArrayList<>();
-        TrafficState observedState = TrafficState.UNKNOWN;
-        float observedStateConfidence = 0f;
+        boolean lightPhase = (analysisPhase++ & 1) == 0;
+        String phaseName = lightPhase ? "YOLO ĐÈN" : "YOLO BIỂN";
+
+        // Giữa hai lượt YOLO đèn, hộp gần nhất vẫn được kiểm tra màu/LED bằng pixel.
+        // Nhờ vậy mỗi frame chỉ chạy một model nặng nhưng màu và số giây vẫn cập nhật.
+        SignalObservation observed = observeCachedLight(frame, nowMs);
+        SignConsensusTracker.Stable stableSign;
+
+        if (lightPhase) {
+            try {
+                LightCandidate target = chooseTargetLight(frame, detectLightPass(frame));
+                if (target != null) {
+                    cachedLight = target.detection;
+                    cachedLightAt = nowMs;
+                    observed = new SignalObservation(
+                            target.detection,
+                            target.color.state,
+                            clamp(target.detection.confidence * 0.62f
+                                    + target.color.confidence * 0.38f, 0f, 1f));
+                }
+            } catch (Throwable error) {
+                errors++;
+            }
+            stableSign = signTracker.update(Collections.emptyList(), nowMs);
+        } else {
+            try {
+                SignPass signPass = detectSignsAtDistance(frame);
+                if (!signPass.signs.isEmpty()) {
+                    lastSigns = signPass.signs;
+                    lastSignsAt = nowMs;
+                }
+                stableSign = signTracker.update(signPass.signs, nowMs);
+                if (signPass.signal != null
+                        && (observed == null
+                        || signPass.signal.confidence > observed.confidence + 0.08f)) {
+                    observed = new SignalObservation(
+                            signPass.signal.detection,
+                            signPass.signal.state,
+                            signPass.signal.confidence);
+                    cachedLight = signPass.signal.detection;
+                    cachedLightAt = nowMs;
+                }
+            } catch (Throwable error) {
+                errors++;
+                stableSign = signTracker.update(Collections.emptyList(), nowMs);
+            }
+        }
+
+        if (nowMs - lastSignsAt > SIGN_OVERLAY_CACHE_MS) {
+            lastSigns = Collections.emptyList();
+        }
+
+        TrafficState observedState = observed == null
+                ? TrafficState.UNKNOWN : observed.state;
+        float observedStateConfidence = observed == null ? 0f : observed.confidence;
         Integer observedCountdown = null;
         float countdownConfidence = 0f;
 
-        Detection targetLightBox = null;
-        try {
-            List<Detection> rawLights = detectLightsAtDistance(frame);
-            LightCandidate target = chooseTargetLight(frame, rawLights);
-            if (target != null) {
-                observedState = target.color.state;
-                observedStateConfidence = clamp(
-                        target.detection.confidence * 0.62f + target.color.confidence * 0.38f,
-                        0f, 1f);
-                String label = "ĐÈN " + observedState.vi;
-                overlay.add(new Detection(
-                        target.detection.box,
-                        target.detection.classId,
-                        label,
-                        observedStateConfidence,
-                        Detection.Kind.TRAFFIC_LIGHT));
-                targetLightBox = target.detection;
-            }
-        } catch (Throwable error) {
-            errors++;
-        }
-
-        try {
-            SignPass signPass = detectSignsAtDistance(frame);
-            lastSigns = signPass.signs;
-            signTracker.update(signPass.signs, nowMs);
-            if (signPass.signal != null
-                    && (observedState == TrafficState.UNKNOWN
-                    || signPass.signal.confidence > observedStateConfidence + 0.08f)) {
-                observedState = signPass.signal.state;
-                observedStateConfidence = signPass.signal.confidence;
-                targetLightBox = signPass.signal.detection;
-                overlay.removeIf(item -> item.kind == Detection.Kind.TRAFFIC_LIGHT);
-                overlay.add(new Detection(
-                        signPass.signal.detection.box,
-                        signPass.signal.detection.classId,
-                        "ĐÈN " + observedState.vi,
-                        observedStateConfidence,
-                        Detection.Kind.TRAFFIC_LIGHT));
-            }
-        } catch (Throwable error) {
-            errors++;
-            lastSigns = Collections.emptyList();
-            signTracker.update(Collections.emptyList(), nowMs);
-        }
-
-        if (targetLightBox != null && observedState != TrafficState.UNKNOWN) {
+        if (observed != null && observed.state != TrafficState.UNKNOWN) {
+            overlay.add(new Detection(
+                    observed.detection.box,
+                    observed.detection.classId,
+                    "ĐÈN " + observed.state.vi,
+                    observed.confidence,
+                    Detection.Kind.TRAFFIC_LIGHT));
             SevenSegmentReader.Result digit = sevenSegmentReader.read(
-                    frame, targetLightBox.box, observedState);
+                    frame, observed.detection.box, observed.state);
             observedCountdown = digit.value;
             countdownConfidence = digit.confidence;
             if (digit.box != null && digit.value != null) {
@@ -123,12 +143,11 @@ public final class AiCoordinator implements AutoCloseable {
                 nowMs);
 
         overlay.addAll(lastSigns);
-        SignConsensusTracker.Stable stableSign = signTracker.update(Collections.emptyList(), nowMs);
         String signText = stableSign == null ? "" : stableSign.detection.label;
         float signConfidence = stableSign == null ? 0f : stableSign.confidence;
 
         long elapsed = SystemClock.elapsedRealtime() - started;
-        String status = "AI đèn + biển + LED • " + elapsed + " ms"
+        String status = phaseName + " luân phiên • " + elapsed + " ms"
                 + (errors > 0 ? " • lỗi frame " + errors : "");
         return new AiResult(
                 overlay,
@@ -141,12 +160,27 @@ public final class AiCoordinator implements AutoCloseable {
                 status);
     }
 
-    private List<Detection> detectLightsAtDistance(Bitmap frame) throws Exception {
-        List<Detection> combined = new ArrayList<>();
-        combined.addAll(lightDetector.detect(frame, 0.16f, trafficLightClass, 18));
-        combined.addAll(lightDetector.detect(
-                frame, nextLightTile(frame), 0.11f, trafficLightClass, 12));
-        return YoloDetector.mergeNms(combined, 0.36f, 20);
+    private List<Detection> detectLightPass(Bitmap frame) throws Exception {
+        // Trước đây chạy cả full-frame và tile trong cùng một frame. Nay luân phiên để
+        // mỗi nhịp chỉ có đúng một inference YOLO.
+        if ((lightPass++ & 1) == 0) {
+            return lightDetector.detect(
+                    frame, nextLightTile(frame), 0.11f, trafficLightClass, 12);
+        }
+        return lightDetector.detect(frame, 0.16f, trafficLightClass, 18);
+    }
+
+    private SignalObservation observeCachedLight(Bitmap frame, long nowMs) {
+        if (cachedLight == null || nowMs - cachedLightAt > LIGHT_CACHE_MS) {
+            cachedLight = null;
+            return null;
+        }
+        TrafficLightAnalyzer.Result color = lightAnalyzer.analyze(frame, cachedLight.box);
+        if (color.state == TrafficState.UNKNOWN) return null;
+        float confidence = clamp(
+                cachedLight.confidence * 0.55f + color.confidence * 0.45f,
+                0f, 1f);
+        return new SignalObservation(cachedLight, color.state, confidence);
     }
 
     private SignPass detectSignsAtDistance(Bitmap frame) throws Exception {
@@ -258,6 +292,11 @@ public final class AiCoordinator implements AutoCloseable {
         countdownTracker.reset();
         signTracker.reset();
         lastSigns = Collections.emptyList();
+        cachedLight = null;
+        cachedLightAt = 0L;
+        lastSignsAt = 0L;
+        analysisPhase = 0;
+        lightPass = 0;
         signTile = 0;
         lightTile = 0;
         errors = 0;
@@ -289,6 +328,18 @@ public final class AiCoordinator implements AutoCloseable {
         final float confidence;
 
         SignalCandidate(Detection detection, TrafficState state, float confidence) {
+            this.detection = detection;
+            this.state = state;
+            this.confidence = confidence;
+        }
+    }
+
+    private static final class SignalObservation {
+        final Detection detection;
+        final TrafficState state;
+        final float confidence;
+
+        SignalObservation(Detection detection, TrafficState state, float confidence) {
             this.detection = detection;
             this.state = state;
             this.confidence = confidence;

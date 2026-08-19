@@ -1,8 +1,18 @@
-# TrafficAI RTSP 1.3.1 • S23 ARM64
+# TrafficAI RTSP 1.4 • Realtime ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
 
 Bản APK 1.3.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+
+## Tối ưu thời gian thực trong bản 1.4
+
+- Mỗi nhịp chỉ chạy một model YOLO, luân phiên đèn và biển thay vì ba inference liên tiếp.
+- Giữ hộp đèn tối đa 1,6 giây để đọc màu/LED bằng pixel ở các nhịp YOLO biển.
+- Luân phiên full-frame và tile phóng đại cho đèn, vẫn ưu tiên vùng bên phải.
+- Giảm chu kỳ lấy khung từ 280 ms xuống 90 ms; cơ chế busy gate tiếp tục chặn hàng đợi frame cũ.
+- Tái sử dụng bitmap 1280×720 để giảm cấp phát bộ nhớ và giật do garbage collection.
+- Bật XNNPACK 4 luồng cho model FP32, tự trở về CPU EP nếu tăng tốc không khởi tạo được.
+- Giảm bộ đệm Media3 RTSP xuống khoảng 0,3–1,0 giây để hình gần thời gian thực hơn.
 
 ## Bổ sung trong bản 1.3
 

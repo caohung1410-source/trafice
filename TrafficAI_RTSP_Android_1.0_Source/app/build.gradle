@@ -10,8 +10,8 @@ android {
         applicationId 'vn.bachphuc.trafficai'
         minSdk 26
         targetSdk 36
-        versionCode 110
-        versionName '1.1.0'
+        versionCode 120
+        versionName '1.2.0-auto-test'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -45,6 +45,9 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer-rtsp:${media3Version}"
     implementation "androidx.media3:media3-ui:${media3Version}"
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.29.0'
+    implementation 'androidx.car.app:app:1.7.0'
+    implementation 'androidx.car.app:app-projected:1.7.0'
+    implementation 'org.maplibre.gl:android-sdk:11.11.0'
 
     testImplementation 'junit:junit:4.13.2'
 }

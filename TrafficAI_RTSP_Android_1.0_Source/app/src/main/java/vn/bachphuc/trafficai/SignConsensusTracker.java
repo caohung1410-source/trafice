@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.Map;
 
 public final class SignConsensusTracker {
-    private static final long WINDOW_MS = 1_800;
-    private static final long LOST_MS = 2_200;
+    private static final long WINDOW_MS = 3_200;
+    private static final long LOST_MS = 4_200;
 
     private final Map<Integer, Deque<Sample>> samples = new HashMap<>();
     private Stable stable;
 
     public synchronized Stable update(List<Detection> observations, long nowMs) {
         for (Detection detection : observations) {
-            if (detection.confidence < 0.40f) continue;
+            if (detection.confidence < 0.25f) continue;
             Deque<Sample> queue = samples.get(detection.classId);
             if (queue == null) {
                 queue = new ArrayDeque<>();
@@ -38,7 +38,7 @@ public final class SignConsensusTracker {
             confidence /= queue.size();
             float temporal = Math.min(1f, queue.size() / 3f);
             float fused = confidence * 0.82f + temporal * 0.18f;
-            if (fused >= 0.58f && (best == null || fused > best.confidence)) {
+            if (fused >= 0.48f && (best == null || fused > best.confidence)) {
                 best = new Stable(last, fused, nowMs);
             }
         }

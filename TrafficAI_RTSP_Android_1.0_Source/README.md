@@ -1,6 +1,15 @@
-# TrafficAI RTSP 1.1
+# TrafficAI RTSP 1.2 • Android Auto thử nghiệm cá nhân
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bổ sung trong bản 1.2 Auto Test
+
+- GPS trên điện thoại hiển thị tốc độ thực tế theo km/h và làm mượt nhiễu ngắn.
+- Tự nhận giới hạn tốc độ khi AI thấy biển phù hợp; có nút đặt nhanh 40/50/60/80 khi chưa nhận được biển.
+- Cảnh báo giọng nói nếu vượt quá giới hạn hơn 5 km/h trong ít nhất 1,8 giây.
+- Màn hình GPS offline trên điện thoại vẽ hướng và vệt di chuyển cục bộ; không gửi tọa độ ra máy chủ. Bản thử nghiệm chưa có nền đường phố/tên đường.
+- Android Auto hiển thị thẻ tốc độ/giới hạn, màu đèn/số giây, biển báo và trạng thái camera/AI.
+- Không chiếu video camera lên màn hình Android Auto; đây là giới hạn chủ động để giảm xao nhãng.
 
 ## Những gì bản 1.1 đã có
 
@@ -54,14 +63,25 @@ Dán URL đầy đủ vào ô đầu tiên. Khi ô này có dữ liệu, ứng d
 
 Project có workflow `.github/workflows/build-apk.yml`. Đẩy project lên nhánh
 `main`, mở tab **Actions**, chạy **Build installable APK**, rồi tải artifact
-`TrafficAI_RTSP_Android_1.0_Debug`. APK debug đã được Android build system ký
+`TrafficAI_RTSP_Android_Debug`. APK debug đã được Android build system ký
 sẵn nên có thể cài trực tiếp trên điện thoại Android 8.0 trở lên.
 5. APK debug nằm tại `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Chạy bản Android Auto thử nghiệm cá nhân
+
+1. Cài APK debug lên điện thoại và cấp quyền vị trí **Chính xác**.
+2. Mở TrafficAI trên điện thoại, kết nối RTSP và bấm **TẢI / MỞ AI**.
+3. Trong cài đặt Android Auto trên điện thoại, bật chế độ nhà phát triển và cho phép **Nguồn không xác định**.
+4. Kết nối điện thoại với Android Auto, mở trình khởi chạy ứng dụng và chọn **TrafficAI Auto**.
+5. Nếu chưa thấy ứng dụng, vào **Tùy chỉnh trình khởi chạy** của Android Auto và bật TrafficAI Auto.
+
+Màn hình xe chỉ là màn hình phụ. Ứng dụng trên điện thoại phải đang chạy để xử lý camera, GPS và giọng nói. Đây là APK debug dành cho thử nghiệm cá nhân, chưa phải bản phát hành Google Play và chưa có dẫn đường từng chặng.
 
 Các dependency chính:
 
 - `androidx.media3` 1.11.0
 - `com.microsoft.onnxruntime:onnxruntime-android` 1.29.0
+- `androidx.car.app` 1.7.0
 - compile/target SDK 36, min SDK 26
 
 ## Model
@@ -85,3 +105,4 @@ Bài test kiểm tra URI-encode/masking mật khẩu, khóa nhiều frame, chặ
 - Độ chính xác thực địa phụ thuộc vị trí camera, độ phân giải, ánh sáng, khoảng cách và model. Số liệu đánh giá của model không phải cam kết độ chính xác trên mọi tuyến đường.
 - LED dot-matrix hoặc kiểu số không theo 7-segment có thể cần một model OCR riêng sau khi thu thập clip thật.
 - Đây là trợ lý thử nghiệm, không phải hệ thống ADAS/an toàn chức năng. Người lái luôn phải tự quan sát biển và tín hiệu thật.
+- Tốc độ GPS, giới hạn đọc bởi AI và đồng hồ đèn có thể sai hoặc trễ; không dùng các giá trị này làm căn cứ duy nhất khi lái xe.

@@ -1,4 +1,5 @@
 import vn.bachphuc.trafficai.CountdownTracker;
+import vn.bachphuc.trafficai.GeoMath;
 import vn.bachphuc.trafficai.RoadGeometryPrior;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
 import vn.bachphuc.trafficai.TrafficState;
@@ -47,6 +48,18 @@ public final class PureLogicSelfTest {
         require(RoadGeometryPrior.travelDirectionEvidence(.52f, .20f)
                         > RoadGeometryPrior.travelDirectionEvidence(.04f, .70f),
                 "Đèn cao theo hướng xe phải ưu tiên hơn đèn thấp ngoài luồng giao thông");
+
+        require(GeoMath.distanceMeters(13.97609, 108.00695,
+                13.97609, 108.00695) < .01d, "Cùng tọa độ phải có khoảng cách bằng 0");
+        double nearby = GeoMath.distanceMeters(13.97609, 108.00695,
+                13.97709, 108.00695);
+        require(nearby > 105d && nearby < 116d,
+                "Chênh 0,001 độ vĩ phải xấp xỉ 111 m");
+        require(Math.abs(GeoMath.headingDifference(350d, 10d) - 20d) < .001d,
+                "So hướng phải xử lý đúng qua mốc 0/360 độ");
+        require(GeoMath.headingDifference(
+                GeoMath.averageHeading(350d, 10d, .5d), 0d) < .001d,
+                "Trung bình hướng 350/10 phải gần hướng Bắc");
 
         System.out.println("PureLogicSelfTest: PASS");
     }

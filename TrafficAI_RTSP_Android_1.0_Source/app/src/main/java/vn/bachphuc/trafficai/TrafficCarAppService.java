@@ -95,12 +95,16 @@ public final class TrafficCarAppService extends CarAppService {
                             .addText("Phía trước: " + value.hazard)
                             .build())
                     .addRow(new Row.Builder()
+                            .setTitle("Map Memory")
+                            .addText(value.landmark)
+                            .build())
+                    .addRow(new Row.Builder()
                             .setTitle(value.cameraConnected ? "Camera RTSP đã kết nối" : "Chưa kết nối camera")
                             .addText(value.aiReady ? "AI sẵn sàng" : "Mở AI trên điện thoại")
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI 2.0 • ADAS Assist")
+                    .setTitle("TrafficAI 2.1 • Map Memory")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
         }

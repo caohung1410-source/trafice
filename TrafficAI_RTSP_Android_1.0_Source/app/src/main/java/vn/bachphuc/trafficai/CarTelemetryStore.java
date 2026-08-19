@@ -17,6 +17,7 @@ public final class CarTelemetryStore {
         public final Integer countdown;
         public final String sign;
         public final String hazard;
+        public final String landmark;
         public final boolean targetLocked;
         public final boolean cameraConnected;
         public final boolean aiReady;
@@ -29,6 +30,7 @@ public final class CarTelemetryStore {
                 Integer countdown,
                 String sign,
                 String hazard,
+                String landmark,
                 boolean targetLocked,
                 boolean cameraConnected,
                 boolean aiReady) {
@@ -39,6 +41,7 @@ public final class CarTelemetryStore {
             this.countdown = countdown;
             this.sign = sign;
             this.hazard = hazard;
+            this.landmark = landmark;
             this.targetLocked = targetLocked;
             this.cameraConnected = cameraConnected;
             this.aiReady = aiReady;
@@ -54,6 +57,7 @@ public final class CarTelemetryStore {
     private static volatile Integer countdown;
     private static volatile String sign = "Chưa thấy";
     private static volatile String hazard = "Đang quan sát";
+    private static volatile String landmark = "Chưa có điểm gần";
     private static volatile boolean targetLocked;
     private static volatile boolean cameraConnected;
     private static volatile boolean aiReady;
@@ -64,7 +68,7 @@ public final class CarTelemetryStore {
     public static State snapshot() {
         return new State(
                 speedKmh, speedLimitKmh, limitSource, light, countdown, sign,
-                hazard, targetLocked,
+                hazard, landmark, targetLocked,
                 cameraConnected, aiReady);
     }
 
@@ -93,6 +97,17 @@ public final class CarTelemetryStore {
     public static void updateConnection(boolean camera, boolean ai) {
         cameraConnected = camera;
         aiReady = ai;
+        notifyListeners();
+    }
+
+    public static void updateLandmark(LandmarkHint hint) {
+        if (hint == null || !hint.isActive()) {
+            landmark = "Chưa có điểm gần";
+        } else {
+            String kind = hint.expectsLight() ? "Đèn" : "Biển";
+            landmark = kind + ": " + hint.label + " • "
+                    + Math.round(hint.distanceMeters) + " m";
+        }
         notifyListeners();
     }
 

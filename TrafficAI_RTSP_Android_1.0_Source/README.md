@@ -1,8 +1,19 @@
-# TrafficAI 2.0 • ADAS Assist ARM64
+# TrafficAI 2.1 • Map Memory ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
 
-## Kiến trúc thị giác video trong bản 2.0
+## Bản 2.1: nền bản đồ thật và bộ nhớ tuyến đường
+
+- Hiển thị nền đường MapLibre từ dữ liệu OpenStreetMap/OpenFreeMap, có tên đường và nút chuyển Camera/Bản đồ.
+- Nút **TẢI MAP OFFLINE QUANH ĐÂY 25 KM** lưu vùng đang đứng ở zoom 8–15 trong bộ nhớ riêng của ứng dụng; sau khi hoàn tất có thể xem vùng đó khi không có Internet.
+- Nếu nền trực tuyến chưa nạp được, lớp GPS dạng lưới vẫn xuất hiện làm chế độ dự phòng thay vì màn hình đen.
+- AI ghi điểm kích hoạt GPS của biển báo/cụm đèn sau ít nhất ba khung ổn định, kèm hướng tiếp cận và vị trí chuẩn hóa trong ảnh. Không lưu ảnh camera, màu đèn hoặc số đếm.
+- Điểm cùng loại, cùng hướng trong bán kính 45 m được gộp. Khi quay lại trong 160 m, AI ưu tiên đúng model và vùng ảnh đã học để tìm lại nhanh hơn.
+- Điểm đã học được đánh dấu trên bản đồ và trạng thái gần điểm được chuyển sang Android Auto.
+
+Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần Internet. Dữ liệu địa điểm AI học được lưu hoàn toàn trong SQLite trên điện thoại.
+
+## Kiến trúc thị giác video kế thừa từ bản 2.0
 
 - Giữ mục tiêu đèn bằng tracker vận tốc/IoU qua nhiều khung hình để giảm đổi nhầm sang cột khác.
 - Khi đã khóa đèn, model nhìn tập trung vào vùng quanh mục tiêu; cứ bốn lượt lại quét toàn cảnh để chống mất dấu.
@@ -14,7 +25,7 @@
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 1.3.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 
@@ -41,7 +52,7 @@ Chiều cao thực không thể đổi chính xác thành tọa độ pixel nế
 - GPS trên điện thoại hiển thị tốc độ thực tế theo km/h và làm mượt nhiễu ngắn.
 - Tự nhận giới hạn tốc độ khi AI thấy biển phù hợp; có nút đặt nhanh 40/50/60/80 khi chưa nhận được biển.
 - Cảnh báo giọng nói nếu vượt quá giới hạn hơn 5 km/h trong ít nhất 1,8 giây.
-- Màn hình GPS offline trên điện thoại vẽ hướng và vệt di chuyển cục bộ; không gửi tọa độ ra máy chủ. Bản thử nghiệm chưa có nền đường phố/tên đường.
+- Màn hình GPS đời 1.2 chỉ vẽ hướng/vệt di chuyển; từ bản 2.1 đã có nền đường và vùng tải offline.
 - Android Auto hiển thị thẻ tốc độ/giới hạn, màu đèn/số giây, biển báo và trạng thái camera/AI.
 - Không chiếu video camera lên màn hình Android Auto; đây là giới hạn chủ động để giảm xao nhãng.
 
@@ -49,7 +60,7 @@ Chiều cao thực không thể đổi chính xác thành tọa độ pixel nế
 
 - Hai model AI được đóng gói sẵn trong APK; lần mở AI đầu chỉ chép model vào vùng riêng, không cần Internet.
 - Vị trí dùng GPS, nhà mạng và vị trí gần nhất; chấp nhận cả quyền vị trí gần đúng để tránh kẹt “Đang tìm”.
-- Màn hình GPS ghi rõ trạng thái quyền/vị trí. Đây là vệt di chuyển offline, chưa có nền đường và tên đường.
+- Màn hình GPS ghi rõ trạng thái quyền/vị trí; lưới cũ nay là lớp dự phòng khi nền MapLibre chưa nạp.
 
 ## Vá lỗi 1.2.2
 
@@ -82,7 +93,7 @@ Chiều cao thực không thể đổi chính xác thành tọa độ pixel nế
 3. Để nhận đèn/biển ở xa, giữ đường dẫn luồng chính mặc định:
    `/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif`
 4. Giữ `RTP/TCP` để tương thích tốt hơn với IMOU, sau đó bấm **KẾT NỐI**.
-5. Bấm **TẢI / MỞ AI**. Lần đầu ứng dụng tải khoảng 50 MB model; các lần sau dùng bản lưu trong máy.
+5. Bấm **TẢI / MỞ AI**. Model đã được workflow đóng gói trong APK và được chép vào vùng riêng trong lần mở đầu.
 6. Khi RTSP đã phát và AI báo đủ ba lõi `OK`, kết quả đèn, số giây và biển báo sẽ hiện bên dưới video và được đọc bằng tiếng Việt.
 
 URL đã kiểm chứng về cấu trúc:
@@ -129,6 +140,7 @@ Các dependency chính:
 - `androidx.media3` 1.11.0
 - `com.microsoft.onnxruntime:onnxruntime-android` 1.29.0
 - `androidx.car.app` 1.7.0
+- `org.maplibre.gl:android-sdk` 13.0.2
 - compile/target SDK 36, min SDK 26
 
 ## Model

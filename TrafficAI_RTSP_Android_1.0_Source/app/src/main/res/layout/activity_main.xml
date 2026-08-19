@@ -22,7 +22,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="TrafficAI 2.0 • ADAS Assist"
+                android:text="TrafficAI 2.1 • Map Memory"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp"
                 android:textStyle="bold" />
@@ -30,7 +30,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Theo dõi mục tiêu • nhớ nhiều khung • cảnh báo phía trước"
+                android:text="Nền đường thật • bản đồ offline • nhớ tọa độ biển/đèn"
                 android:textColor="#90A8C0"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -188,6 +188,12 @@
             android:layout_width="match_parent"
             android:layout_height="44dp"
             android:text="THỬ GIỌNG CẢNH BÁO" />
+
+        <Button
+            android:id="@+id/downloadMapButton"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="TẢI MAP OFFLINE QUANH ĐÂY 25 KM" />
     </LinearLayout>
 
     <TextView
@@ -215,6 +221,12 @@
         android:layout_marginTop="6dp"
         android:layout_weight="1"
         android:background="#000000">
+
+        <org.maplibre.android.maps.MapView
+            android:id="@+id/baseMapView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
 
         <vn.bachphuc.trafficai.OfflineGpsView
             android:id="@+id/mapView"

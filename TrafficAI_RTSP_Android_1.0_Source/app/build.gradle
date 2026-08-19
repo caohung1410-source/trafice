@@ -10,8 +10,8 @@ android {
         applicationId 'vn.bachphuc.trafficai'
         minSdk 26
         targetSdk 36
-        versionCode 200
-        versionName '2.0.0-adas-assist-arm64'
+        versionCode 210
+        versionName '2.1.0-map-memory-arm64'
 
         // Bản cài trực tiếp cho Samsung S23 Ultra và điện thoại Android 64-bit hiện đại.
         // Loại các thư viện native x86/32-bit không dùng tới để APK nhỏ và tải ổn định hơn.
@@ -57,6 +57,7 @@ dependencies {
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.29.0'
     implementation 'androidx.car.app:app:1.7.0'
     implementation 'androidx.car.app:app-projected:1.7.0'
+    implementation 'org.maplibre.gl:android-sdk:13.0.2'
 
     testImplementation 'junit:junit:4.13.2'
 }

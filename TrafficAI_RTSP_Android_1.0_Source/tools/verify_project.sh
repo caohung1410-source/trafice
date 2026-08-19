@@ -17,6 +17,9 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CarTelemetryStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficCarAppService.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/OfflineGpsView.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/GeoMath.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkHint.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkMemoryStore.java"
   "$project_root/app/src/main/res/xml/automotive_app_desc.xml"
   "$project_root/app/src/main/assets/sign_labels_vi.txt"
 )
@@ -41,4 +44,6 @@ if rg -n 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
 fi
 
 bash "$project_root/tools/run_pure_logic_test.sh"
-echo "verify_project: PASS • TrafficAI 2.0 tracker/hazard • 82 labels • Android Auto • XML/credential OK"
+rg -q "org.maplibre.gl:android-sdk" "$project_root/app/build.gradle"
+rg -q "MAP_STYLE_URL" "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+echo "verify_project: PASS • TrafficAI 2.1 MapLibre/offline/landmark memory • 82 labels • Android Auto • XML/credential OK"

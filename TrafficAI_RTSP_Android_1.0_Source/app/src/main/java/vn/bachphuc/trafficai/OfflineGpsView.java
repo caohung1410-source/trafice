@@ -12,7 +12,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Locale;
 
-/** GPS trail tối giản chạy hoàn toàn trong máy, không tải hoặc gửi dữ liệu bản đồ. */
+/** Lớp phủ GPS cục bộ; đồng thời là nền dự phòng khi MapLibre chưa nạp được. */
 public final class OfflineGpsView extends View {
     private static final int MAX_POINTS = 160;
     private static final double METERS_PER_DEGREE_LAT = 111_320d;
@@ -38,6 +38,7 @@ public final class OfflineGpsView extends View {
     private float bearing;
     private int speedKmh;
     private boolean hasFix;
+    private boolean basemapVisible;
     private String statusMessage = "ĐANG TÌM VỊ TRÍ";
 
     public OfflineGpsView(Context context) {
@@ -46,7 +47,7 @@ public final class OfflineGpsView extends View {
 
     public OfflineGpsView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        setBackgroundColor(Color.rgb(7, 17, 31));
+        setBackgroundColor(Color.TRANSPARENT);
         gridPaint.setColor(Color.rgb(30, 61, 84));
         gridPaint.setStrokeWidth(1.4f);
         trailPaint.setColor(Color.rgb(50, 210, 150));
@@ -78,11 +79,18 @@ public final class OfflineGpsView extends View {
         invalidate();
     }
 
+    public void setBasemapVisible(boolean visible) {
+        basemapVisible = visible;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         float width = getWidth();
         float height = getHeight();
+        if (!basemapVisible) canvas.drawColor(Color.rgb(7, 17, 31));
+        gridPaint.setAlpha(basemapVisible ? 45 : 255);
         for (int i = 1; i < 8; i++) {
             float x = width * i / 8f;
             float y = height * i / 8f;
@@ -102,7 +110,8 @@ public final class OfflineGpsView extends View {
         textPaint.setTextAlign(Paint.Align.LEFT);
         canvas.drawText(speedKmh + " km/h", 24f, 48f, textPaint);
         textPaint.setTextSize(24f);
-        canvas.drawText("GPS OFFLINE • KHÔNG NỀN ĐƯỜNG", 24f, 82f, textPaint);
+        canvas.drawText(basemapVisible ? "GPS • MAPLIBRE / OPENSTREETMAP"
+                : "GPS OFFLINE • ĐANG CHỜ NỀN ĐƯỜNG", 24f, 82f, textPaint);
         canvas.drawText(String.format(Locale.US, "%.5f, %.5f", latitude, longitude),
                 24f, height - 24f, textPaint);
         textPaint.setTextSize(34f);

@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác video 2.0: quét, khóa mục tiêu, nhìn tập trung và quyết định theo thời gian. */
+/** Điều phối thị giác 2.1: tracker nhiều frame và gợi ý vùng ảnh từ bộ nhớ tọa độ. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
@@ -48,6 +48,7 @@ public final class AiCoordinator implements AutoCloseable {
     private int lightTile;
     private int errors;
     private String lastVisionMode = "QUÉT";
+    private LandmarkHint landmarkHint = LandmarkHint.NONE;
 
     public AiCoordinator(File lightModel, File signModel, String[] signLabels) throws Exception {
         // Tận dụng cùng một lượt COCO để thấy đèn và các đối tượng giao thông phía trước.
@@ -61,14 +62,18 @@ public final class AiCoordinator implements AutoCloseable {
     public synchronized AiResult analyze(Bitmap frame, long nowMs) {
         long started = SystemClock.elapsedRealtime();
         List<Detection> overlay = new ArrayList<>();
-        boolean scenePhase = (analysisPhase++ & 1) == 0;
+        int phase = analysisPhase++;
+        LandmarkHint hint = landmarkHint;
+        boolean scenePhase = hint.expectsLight()
+                ? phase % 3 != 2
+                : hint.expectsSign() ? phase % 3 == 0 : (phase & 1) == 0;
         SignalObservation observed = observeTrackedLight(frame, nowMs);
         SignConsensusTracker.Stable stableSign;
         ForwardHazardAnalyzer.Result hazard = hazardAnalyzer.current(nowMs);
 
         if (scenePhase) {
             try {
-                ScenePass scene = detectScenePass(frame, nowMs);
+                ScenePass scene = detectScenePass(frame, nowMs, hint);
                 hazard = hazardAnalyzer.update(scene.roadObjects,
                         frame.getWidth(), frame.getHeight(), nowMs, scene.fullScene);
                 LightCandidate target = chooseTargetLight(frame, scene.lights, nowMs);
@@ -91,7 +96,7 @@ public final class AiCoordinator implements AutoCloseable {
         } else {
             lastVisionMode = "BIỂN VN";
             try {
-                SignPass signPass = detectSignsAtDistance(frame);
+                SignPass signPass = detectSignsAtDistance(frame, hint);
                 if (!signPass.signs.isEmpty()) {
                     lastSigns = signPass.signs;
                     lastSignsAt = nowMs;
@@ -156,6 +161,8 @@ public final class AiCoordinator implements AutoCloseable {
         long elapsed = SystemClock.elapsedRealtime() - started;
         String status = lastVisionMode
                 + (targetLocked ? " • KHÓA MỤC TIÊU" : " • ĐANG TÌM")
+                + (hint.isActive() ? " • ĐIỂM ĐÃ HỌC "
+                + Math.round(hint.distanceMeters) + " m" : "")
                 + " • " + elapsed + " ms"
                 + (errors > 0 ? " • lỗi " + errors : "");
         return new AiResult(
@@ -172,7 +179,8 @@ public final class AiCoordinator implements AutoCloseable {
                 status);
     }
 
-    private ScenePass detectScenePass(Bitmap frame, long nowMs) throws Exception {
+    private ScenePass detectScenePass(
+            Bitmap frame, long nowMs, LandmarkHint hint) throws Exception {
         int pass = scenePassCounter++;
         RectF region = null;
         boolean fullScene = false;
@@ -181,6 +189,9 @@ public final class AiCoordinator implements AutoCloseable {
         if (focus != null && pass % 4 != 3) {
             region = focus;
             lastVisionMode = "NHÌN TẬP TRUNG";
+        } else if (hint.expectsLight() && pass % 4 != 3) {
+            region = learnedRegion(frame, hint, .40f, .55f);
+            lastVisionMode = "NHỚ VỊ TRÍ ĐÈN";
         } else if (pass % 2 == 0 || focus != null) {
             fullScene = true;
             lastVisionMode = "QUÉT TOÀN CẢNH";
@@ -212,9 +223,12 @@ public final class AiCoordinator implements AutoCloseable {
         return new SignalObservation(tracked, color.state, confidence);
     }
 
-    private SignPass detectSignsAtDistance(Bitmap frame) throws Exception {
-        RectF tile = nextSignTile(frame);
-        List<Detection> raw = signDetector.detect(frame, tile, 0.19f, null, 24);
+    private SignPass detectSignsAtDistance(Bitmap frame, LandmarkHint hint) throws Exception {
+        RectF tile = hint.expectsSign()
+                ? learnedRegion(frame, hint, .42f, .58f) : nextSignTile(frame);
+        if (hint.expectsSign()) lastVisionMode = "NHỚ VỊ TRÍ BIỂN";
+        List<Detection> raw = signDetector.detect(
+                frame, tile, hint.expectsSign() ? 0.17f : 0.19f, null, 24);
         List<Detection> signs = new ArrayList<>();
         SignalCandidate signal = null;
         for (Detection detection : raw) {
@@ -287,6 +301,21 @@ public final class AiCoordinator implements AutoCloseable {
         return new RectF(0, 0, width * 0.56f, height * 0.88f);
     }
 
+    private RectF learnedRegion(
+            Bitmap frame, LandmarkHint hint, float normalizedWidth, float normalizedHeight) {
+        float width = frame.getWidth();
+        float height = frame.getHeight();
+        float halfWidth = width * normalizedWidth * .5f;
+        float halfHeight = height * normalizedHeight * .5f;
+        float centerX = hint.imageX * width;
+        float centerY = hint.imageY * height;
+        return new RectF(
+                Math.max(0f, centerX - halfWidth),
+                Math.max(0f, centerY - halfHeight),
+                Math.min(width, centerX + halfWidth),
+                Math.min(height * .92f, centerY + halfHeight));
+    }
+
     private LightCandidate chooseTargetLight(
             Bitmap frame, List<Detection> detections, long nowMs) {
         LightCandidate best = null;
@@ -341,6 +370,10 @@ public final class AiCoordinator implements AutoCloseable {
         lightTile = 0;
         errors = 0;
         lastVisionMode = "QUÉT";
+    }
+
+    public synchronized void setLandmarkHint(LandmarkHint hint) {
+        landmarkHint = hint == null ? LandmarkHint.NONE : hint;
     }
 
     @Override

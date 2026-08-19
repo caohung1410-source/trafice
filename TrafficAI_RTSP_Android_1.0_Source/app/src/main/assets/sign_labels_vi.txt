@@ -1,0 +1,82 @@
+Cấm đi ngược chiều
+Chỉ được rẽ phải
+Giới hạn tốc độ 40 km/h
+Cấm xe tải và xe khách
+Cấm xe tải
+Hạn chế chiều cao
+Cấm ô tô
+Nguy hiểm
+Đi chậm
+Hai chỗ ngoặt liên tiếp, trước sang phải
+Chướng ngại vật trên đường
+Đường có camera giám sát
+Giới hạn tốc độ 60 km/h
+Cấm mô tô
+Phân làn đường
+Hạn chế chiều cao
+Cấm còi
+Cấm rẽ trái
+Cấm rẽ phải
+Cấm quay đầu
+Cấm quay đầu và rẽ trái
+Cấm quay đầu và rẽ phải
+Phía trước có đèn tín hiệu
+Cấm dừng và đỗ xe
+Cấm đỗ xe
+Cấm đi thẳng và rẽ phải
+Cấm rẽ trái và rẽ phải
+Chỗ ngoặt nguy hiểm bên trái
+Chỗ ngoặt nguy hiểm bên phải
+Giao nhau với đường không ưu tiên
+Giao nhau với đường đồng cấp
+Cấm mô tô rẽ trái
+Giao nhau với đường ưu tiên
+Làn đường dành cho người đi bộ
+Đường hẹp bên trái
+Đường hẹp bên phải
+Đường hẹp cả hai bên
+Cấm xe hai và ba bánh
+Gờ giảm tốc
+Giới hạn tốc độ 50 km/h
+Giới hạn tốc độ 70 km/h
+Giới hạn tốc độ 80 km/h
+Giao nhau với đường sắt có rào chắn
+Cấm ô tô quay đầu
+Cấm xe buýt
+Cấm vượt
+Trẻ em
+Người đi bộ sang đường
+Hết tất cả các lệnh cấm
+Đi về bên trái
+Công trường
+Đường một chiều
+Hướng đi phải theo bên trái
+Hướng đi phải theo bên phải
+Đèn xanh
+Đèn đỏ
+Vòng xuyến
+Giới hạn tốc độ 10 km/h
+Giới hạn tốc độ 100 km/h
+Giới hạn tốc độ 110 km/h
+Giới hạn tốc độ 120 km/h
+Giới hạn tốc độ 20 km/h
+Giới hạn tốc độ 30 km/h
+Giới hạn tốc độ 90 km/h
+Dừng lại
+Nơi quay đầu xe
+Cấm đỗ xe ngày lẻ
+Cấm đỗ xe ngày chẵn
+Nơi đỗ xe
+Điểm dừng xe buýt
+Bệnh viện
+Cấm ô tô quay đầu và rẽ trái
+Khu vực xảy ra tai nạn
+Bắt đầu đường đôi
+Cấm ô tô rẽ trái
+Dốc lên nguy hiểm
+Cầu hẹp
+Đường không bằng phẳng
+Hết giới hạn tốc độ 50 km/h
+Bắt đầu khu đông dân cư
+Hết khu đông dân cư
+Đường trơn

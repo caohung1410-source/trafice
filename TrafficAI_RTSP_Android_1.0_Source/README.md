@@ -1,0 +1,82 @@
+# TrafficAI RTSP 1.0
+
+Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Những gì bản 1.0 đã có
+
+- Phát RTSP bằng Android Media3, hỗ trợ BASIC/DIGEST authentication, UDP unicast và RTP-over-RTSP/TCP.
+- Preset IMOU/Dahua cho `subtype=1` (nhẹ, nên dùng cho AI) và `subtype=0` (luồng chính).
+- Nhập URL RTSP đầy đủ cho camera hãng khác.
+- ONNX Runtime chạy model ngay trên điện thoại; ảnh camera không phải gửi lên máy chủ.
+- YOLO COCO tìm cụm đèn, sau đó kiểm tra màu đỏ/vàng/xanh bằng pixel và vị trí bóng đèn.
+- YOLO11s 82 lớp tìm biển báo Việt Nam; dùng tile nhiều vùng, lượt xác nhận thứ hai và đồng thuận nhiều frame để giảm báo sai.
+- Bộ đọc LED 7-segment 1–3 chữ số ở trái/phải/dưới cụm đèn.
+- Countdown chỉ hiển thị số đã nhìn thấy đủ nhiều frame; không chấp nhận chuỗi tăng bất thường; đổi màu, mất bảng hoặc số 0 thì xóa số cũ.
+- Đọc tiếng Việt bằng TextToSpeech; số ban đầu đọc một lần, từ 5 đến 1 đọc từng số.
+- Mật khẩu không được ghi vào log hay SharedPreferences.
+- Giao diện khởi động độc lập với model: model lỗi/tải chậm không làm màn hình trắng hoặc làm ứng dụng văng.
+
+## Cách dùng với IMOU C22E-A
+
+1. Điện thoại và camera phải nhìn thấy nhau trong cùng LAN/Wi-Fi, hoặc RTSP đã được định tuyến/VPN đúng cách.
+2. Nhập `IP camera`, port `554`, user `admin`, mật khẩu/Safety Code.
+3. Giữ đường dẫn mặc định:
+   `/cam/realmonitor?channel=1&subtype=1&unicast=true&proto=Onvif`
+4. Giữ `RTP/TCP` để tương thích tốt hơn với IMOU, sau đó bấm **KẾT NỐI**.
+5. Bấm **TẢI / MỞ AI**. Lần đầu ứng dụng tải khoảng 50 MB model; các lần sau dùng bản lưu trong máy.
+6. Khi RTSP đã phát và AI báo đủ ba lõi `OK`, kết quả đèn, số giây và biển báo sẽ hiện bên dưới video và được đọc bằng tiếng Việt.
+
+URL đã kiểm chứng về cấu trúc:
+
+```text
+rtsp://admin:MATKHAU@IP:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif
+```
+
+Nếu luồng chính chậm, đổi `subtype=0` thành `subtype=1`.
+
+## Camera RTSP hãng khác
+
+Dán URL đầy đủ vào ô đầu tiên. Khi ô này có dữ liệu, ứng dụng bỏ qua các ô IP/user/password/path bên dưới. Media3 RTSP chính thức hỗ trợ H.264 và âm thanh AAC/AC3; camera đang phát H.265 cần chuyển profile video sang H.264.
+
+## Build APK trong Android Studio
+
+1. Cài Android Studio hiện hành, Android SDK 36 và JDK 17.
+2. Mở thư mục `TrafficAI_RTSP_Android`.
+3. Chờ Gradle Sync tải Media3 và ONNX Runtime.
+4. Chọn **Build > Build APK(s)**.
+
+## Tạo APK cài trực tiếp bằng GitHub Actions
+
+Project có workflow `.github/workflows/build-apk.yml`. Đẩy project lên nhánh
+`main`, mở tab **Actions**, chạy **Build installable APK**, rồi tải artifact
+`TrafficAI_RTSP_Android_1.0_Debug`. APK debug đã được Android build system ký
+sẵn nên có thể cài trực tiếp trên điện thoại Android 8.0 trở lên.
+5. APK debug nằm tại `app/build/outputs/apk/debug/app-debug.apk`.
+
+Các dependency chính:
+
+- `androidx.media3` 1.11.0
+- `com.microsoft.onnxruntime:onnxruntime-android` 1.29.0
+- compile/target SDK 36, min SDK 26
+
+## Model
+
+- Đèn: `webnn/yolo11n`, COCO class `traffic light`.
+- Biển Việt Nam: `star092304/traffic-sign-detection-vietnam-yolo`, 82 lớp, ONNX 640×640.
+- Model được tải trực tiếp ở lần khởi tạo AI và lưu trong vùng riêng của ứng dụng.
+
+## Kiểm thử logic không cần Android SDK
+
+Từ thư mục dự án chạy:
+
+```bash
+bash tools/run_pure_logic_test.sh
+```
+
+Bài test kiểm tra URI-encode/masking mật khẩu, khóa nhiều frame, chặn countdown tăng và reset khi đèn đổi màu.
+
+## Giới hạn cần hiểu đúng
+
+- Độ chính xác thực địa phụ thuộc vị trí camera, độ phân giải, ánh sáng, khoảng cách và model. Số liệu đánh giá của model không phải cam kết độ chính xác trên mọi tuyến đường.
+- LED dot-matrix hoặc kiểu số không theo 7-segment có thể cần một model OCR riêng sau khi thu thập clip thật.
+- Đây là trợ lý thử nghiệm, không phải hệ thống ADAS/an toàn chức năng. Người lái luôn phải tự quan sát biển và tín hiệu thật.

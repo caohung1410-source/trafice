@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'vn.bachphuc.trafficai'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'vn.bachphuc.trafficai'
+        minSdk 26
+        targetSdk 36
+        versionCode 100
+        versionName '1.0.0'
+
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/INDEX.LIST']
+        }
+    }
+}
+
+dependencies {
+    def media3Version = '1.11.0'
+    implementation "androidx.media3:media3-exoplayer:${media3Version}"
+    implementation "androidx.media3:media3-exoplayer-rtsp:${media3Version}"
+    implementation "androidx.media3:media3-ui:${media3Version}"
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.29.0'
+
+    testImplementation 'junit:junit:4.13.2'
+}

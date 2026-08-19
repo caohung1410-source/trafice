@@ -1,0 +1,38 @@
+import vn.bachphuc.trafficai.CountdownTracker;
+import vn.bachphuc.trafficai.RtspUrlBuilder;
+import vn.bachphuc.trafficai.TrafficState;
+
+public final class PureLogicSelfTest {
+    public static void main(String[] args) {
+        String url = RtspUrlBuilder.build(
+                "", "192.168.1.108", "554", "admin", "A b@1",
+                "/cam/realmonitor?channel=1&subtype=1");
+        require(url.contains("A%20b%401"), "Mật khẩu phải được URI-encode");
+        require(!RtspUrlBuilder.redact(url).contains("A%20b%401"), "Log không được lộ mật khẩu");
+
+        CountdownTracker tracker = new CountdownTracker();
+        long t = 1_000;
+        tracker.update(TrafficState.RED, .9f, 12, .9f, t);
+        tracker.update(TrafficState.RED, .9f, 12, .9f, t + 120);
+        tracker.update(TrafficState.RED, .9f, 12, .9f, t + 240);
+        CountdownTracker.Result locked = tracker.update(TrafficState.RED, .9f, 12, .9f, t + 360);
+        require(locked.state == TrafficState.RED, "Cần khóa đèn đỏ sau nhiều frame");
+        require(locked.visibleNumber != null && locked.visibleNumber == 12, "Cần khóa số 12");
+
+        tracker.update(TrafficState.RED, .9f, 13, .9f, t + 480);
+        CountdownTracker.Result noIncrease = tracker.update(TrafficState.RED, .9f, 13, .9f, t + 600);
+        require(noIncrease.visibleNumber == 12, "Không được chấp nhận chuỗi tăng bất thường");
+
+        tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_700);
+        tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_820);
+        CountdownTracker.Result changed = tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_940);
+        require(changed.state == TrafficState.GREEN, "Cần nhận đổi màu đèn");
+        require(changed.visibleNumber == null, "Đổi màu phải reset countdown cũ");
+
+        System.out.println("PureLogicSelfTest: PASS");
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+}

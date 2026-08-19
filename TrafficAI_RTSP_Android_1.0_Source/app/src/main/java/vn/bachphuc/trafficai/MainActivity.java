@@ -298,11 +298,18 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ready.close();
                     return;
                 }
-                aiCoordinator = ready;
-                CarTelemetryStore.updateConnection(
-                        player != null && player.getPlaybackState() == Player.STATE_READY, true);
                 runOnUiThread(() -> {
-                    if (destroyed) return;
+                    if (destroyed) {
+                        try {
+                            ready.close();
+                        } catch (Exception ignored) {
+                        }
+                        return;
+                    }
+                    aiCoordinator = ready;
+                    boolean cameraReady = player != null
+                            && player.getPlaybackState() == Player.STATE_READY;
+                    CarTelemetryStore.updateConnection(cameraReady, true);
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
@@ -313,7 +320,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     if (destroyed) return;
                     aiBadge.setText("AI: LỖI");
                     initAiButton.setEnabled(true);
-                    setStatus("Lỗi tải/khởi tạo AI: " + safeMessage(error));
+                    setStatus("Lỗi khởi tạo AI: " + safeMessage(error));
                 });
             }
         });

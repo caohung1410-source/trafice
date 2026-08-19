@@ -216,7 +216,7 @@
         android:layout_weight="1"
         android:background="#000000">
 
-        <org.maplibre.android.maps.MapView
+        <vn.bachphuc.trafficai.OfflineGpsView
             android:id="@+id/mapView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

@@ -1,6 +1,17 @@
-# TrafficAI 2.2.1 • Navigation ARM64
+# TrafficAI 2.2.2 • Sign Tracker ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Vá lỗi 2.2.2: giảm bỏ sót biển ở xa
+
+- Thay bộ cộng phiếu theo class bằng tracker riêng cho từng biển dựa trên vị trí, chuyển động và kích thước hộp.
+- Giữ ứng viên từ 0,16; biển rõ xác nhận sau hai khung, biển xa cần đa số ít nhất ba phiếu trên cùng track.
+- Prior cột phải/độ cao chỉ giảm tối đa khoảng 6,3%, không còn làm mất mạnh biển giữa hoặc bên trái.
+- Chu kỳ quét biển mới: phải → giữa → phải → trái → toàn cảnh; điểm OSM/Map Memory vẫn kích hoạt vùng quét đã học.
+- Màn hình AI hiển thị `BIỂN RAW` và `TRACK` để phân biệt model không thấy biển với bộ xác nhận chưa đủ phiếu.
+- Giọng nói ưu tiên nguy hiểm, màu đèn/số giây rồi mới đọc biển; cùng một track không bị đọc lặp liên tục.
+
+Bản vá này cải thiện 82 lớp hiện có và chưa bổ sung model nhận diện biển ngoài tập huấn luyện. Detector biển tổng quát và bộ phân loại theo mã QCVN được để dành cho nhánh 2.3 vì cần thêm model/dữ liệu thực địa.
 
 ## Bản 2.2: dữ liệu biển/đèn OSM, tìm giọng nói và dẫn đường
 
@@ -46,7 +57,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.2.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.2.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

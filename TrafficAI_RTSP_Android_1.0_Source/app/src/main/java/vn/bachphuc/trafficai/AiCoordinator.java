@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.2.1: tracker nhiều frame và gợi ý vùng ảnh từ bộ nhớ tọa độ. */
+/** Điều phối thị giác 2.2.2: tracker từng biển và gợi ý vùng ảnh từ bộ nhớ tọa độ. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
@@ -47,6 +47,7 @@ public final class AiCoordinator implements AutoCloseable {
     private int signTile;
     private int lightTile;
     private int errors;
+    private int lastSignRawCount;
     private String lastVisionMode = "QUÉT";
     private LandmarkHint landmarkHint = LandmarkHint.NONE;
 
@@ -97,6 +98,7 @@ public final class AiCoordinator implements AutoCloseable {
             lastVisionMode = "BIỂN VN";
             try {
                 SignPass signPass = detectSignsAtDistance(frame, hint);
+                lastSignRawCount = signPass.signs.size();
                 if (!signPass.signs.isEmpty()) {
                     lastSigns = signPass.signs;
                     lastSignsAt = nowMs;
@@ -158,12 +160,15 @@ public final class AiCoordinator implements AutoCloseable {
 
         String signText = stableSign == null ? "" : stableSign.detection.label;
         float signConfidence = stableSign == null ? 0f : stableSign.confidence;
+        long signTrackId = stableSign == null ? -1L : stableSign.trackId;
         long elapsed = SystemClock.elapsedRealtime() - started;
         String status = lastVisionMode
                 + (targetLocked ? " • KHÓA MỤC TIÊU" : " • ĐANG TÌM")
                 + (hint.isActive() ? " • ĐIỂM ĐÃ HỌC "
                 + Math.round(hint.distanceMeters) + " m" : "")
                 + " • " + elapsed + " ms"
+                + " • BIỂN RAW " + lastSignRawCount
+                + " TRACK " + signTracker.activeTrackCount()
                 + (errors > 0 ? " • lỗi " + errors : "");
         return new AiResult(
                 overlay,
@@ -172,6 +177,7 @@ public final class AiCoordinator implements AutoCloseable {
                 countdown.visibleNumber,
                 signText,
                 signConfidence,
+                signTrackId,
                 hazard.text,
                 hazard.confidence,
                 targetLocked,
@@ -227,12 +233,15 @@ public final class AiCoordinator implements AutoCloseable {
         RectF tile = hint.expectsSign()
                 ? learnedRegion(frame, hint, .42f, .58f) : nextSignTile(frame);
         if (hint.expectsSign()) lastVisionMode = "NHỚ VỊ TRÍ BIỂN";
+        else if (tile == null) lastVisionMode = "BIỂN TOÀN CẢNH";
         List<Detection> raw = signDetector.detect(
-                frame, tile, hint.expectsSign() ? 0.17f : 0.19f, null, 24);
+                frame, tile,
+                hint.expectsSign() ? 0.14f : tile == null ? 0.17f : 0.16f,
+                null, 30);
         List<Detection> signs = new ArrayList<>();
         SignalCandidate signal = null;
         for (Detection detection : raw) {
-            if (detection.box.width() < 5f || detection.box.height() < 5f) continue;
+            if (detection.box.width() < 4f || detection.box.height() < 4f) continue;
             float centerX = detection.box.centerX() / frame.getWidth();
             float centerY = detection.box.centerY() / frame.getHeight();
             boolean signalClass = detection.classId == SIGN_GREEN_LIGHT_CLASS
@@ -272,7 +281,7 @@ public final class AiCoordinator implements AutoCloseable {
             }
             signs.add(adjusted);
         }
-        return new SignPass(YoloDetector.mergeNms(signs, 0.36f, 12), signal);
+        return new SignPass(YoloDetector.mergeNms(signs, 0.36f, 16), signal);
     }
 
     private RectF nextLightTile(Bitmap frame) {
@@ -289,7 +298,7 @@ public final class AiCoordinator implements AutoCloseable {
     }
 
     private RectF nextSignTile(Bitmap frame) {
-        int index = (signTile++ / 2) % 4;
+        int index = signTile++ % 5;
         float width = frame.getWidth();
         float height = frame.getHeight();
         if (index == 0 || index == 2) {
@@ -298,7 +307,10 @@ public final class AiCoordinator implements AutoCloseable {
         if (index == 1) {
             return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.88f);
         }
-        return new RectF(0, 0, width * 0.56f, height * 0.88f);
+        if (index == 3) {
+            return new RectF(0, 0, width * 0.56f, height * 0.88f);
+        }
+        return null;
     }
 
     private RectF learnedRegion(
@@ -369,6 +381,7 @@ public final class AiCoordinator implements AutoCloseable {
         signTile = 0;
         lightTile = 0;
         errors = 0;
+        lastSignRawCount = 0;
         lastVisionMode = "QUÉT";
     }
 

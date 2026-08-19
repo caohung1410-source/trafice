@@ -251,7 +251,9 @@ public final class YoloDetector implements AutoCloseable {
         for (Detection candidate : sorted) {
             boolean overlap = false;
             for (Detection previous : kept) {
-                if (candidate.classId == previous.classId && iou(candidate.box, previous.box) > iouThreshold) {
+                float overlapRatio = iou(candidate.box, previous.box);
+                if ((candidate.classId == previous.classId && overlapRatio > iouThreshold)
+                        || (candidate.classId != previous.classId && overlapRatio > .72f)) {
                     overlap = true;
                     break;
                 }

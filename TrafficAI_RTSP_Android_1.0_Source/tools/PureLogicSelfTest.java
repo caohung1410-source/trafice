@@ -5,6 +5,8 @@ import vn.bachphuc.trafficai.NavigationSession;
 import vn.bachphuc.trafficai.RoadGeometryPrior;
 import vn.bachphuc.trafficai.RoutePlan;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
+import vn.bachphuc.trafficai.SignDecisionPolicy;
+import vn.bachphuc.trafficai.SignTrackMath;
 import vn.bachphuc.trafficai.TrafficState;
 
 import java.util.Arrays;
@@ -50,9 +52,30 @@ public final class PureLogicSelfTest {
                 "Không được cắt cứng biển nhắc lại bên trái");
         require(RoadGeometryPrior.adjustConfidence(.20f, 1f) <= .20f,
                 "Prior không được tự nâng phát hiện yếu");
+        require(RoadGeometryPrior.adjustConfidence(.20f, .22f) >= .184f,
+                "Prior không được làm mất biển thật ở giữa hoặc bên trái");
         require(RoadGeometryPrior.travelDirectionEvidence(.52f, .20f)
                         > RoadGeometryPrior.travelDirectionEvidence(.04f, .70f),
                 "Đèn cao theo hướng xe phải ưu tiên hơn đèn thấp ngoài luồng giao thông");
+
+        require(!SignDecisionPolicy.evaluate(2, 2, .34f, .55f).confirmed,
+                "Hai phát hiện yếu chưa được đọc thành biển thật");
+        require(SignDecisionPolicy.evaluate(2, 2, .46f, .70f).confirmed,
+                "Biển rõ phải xác nhận được sau hai khung");
+        require(!SignDecisionPolicy.evaluate(2, 4, .80f, .90f).confirmed,
+                "Hai lớp hòa phiếu không được xác nhận chỉ vì độ tin cậy cao");
+        require(SignDecisionPolicy.evaluate(3, 4, .24f, .31f).confirmed,
+                "Ba phiếu cùng lớp phải giữ được biển xa");
+        require(!SignDecisionPolicy.evaluate(2, 5, .80f, .90f).confirmed,
+                "Không xác nhận lớp chỉ chiếm thiểu số trên một track");
+        require(SignTrackMath.affinity(
+                100f, 100f, 120f, 120f,
+                108f, 102f, 128f, 122f) > .20f,
+                "Cùng biển dịch chuyển nhẹ phải được nối track");
+        require(SignTrackMath.affinity(
+                100f, 100f, 120f, 120f,
+                500f, 100f, 520f, 120f) < .20f,
+                "Hai biển cùng cỡ nhưng ở xa không được nhập chung track");
 
         require(GeoMath.distanceMeters(13.97609, 108.00695,
                 13.97609, 108.00695) < .01d, "Cùng tọa độ phải có khoảng cách bằng 0");

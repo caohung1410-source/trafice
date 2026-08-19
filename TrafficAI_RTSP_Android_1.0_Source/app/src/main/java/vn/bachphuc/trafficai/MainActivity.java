@@ -136,6 +136,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private String lastSpokenSignal = "";
     private String lastSpokenSign = "";
+    private long lastSpokenSignTrackId = -1L;
     private Integer lastSpokenCountdown;
     private long lastSignalSpeechAt;
     private long lastSignSpeechAt;
@@ -548,7 +549,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.2.1 • "
+        String metadata = "{\"name\":\"TrafficAI 2.2.2 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -880,7 +881,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.2.1: AI sẵn sàng • OSM fallback + Navigation");
+                    setStatus("TrafficAI 2.2.2: AI sẵn sàng • theo dõi từng biển");
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
@@ -938,9 +939,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.2.1: " + result.inferenceMs + " ms • "
+        aiBadge.setText("ADAS 2.2.2 • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
-                + (result.targetLocked ? " • KHÓA" : " • QUÉT")
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
 
@@ -977,14 +977,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             lastHazardSpeechAt = now;
             return;
         }
-        if (!result.signText.isEmpty()
-                && (!result.signText.equals(lastSpokenSign) || now - lastSignSpeechAt > 12_000)) {
-            speak("Biển báo, " + result.signText, TextToSpeech.QUEUE_FLUSH);
-            lastSpokenSign = result.signText;
-            lastSignSpeechAt = now;
-            return;
-        }
-
         Integer number = result.countdown;
         if (number != null && !signal.isEmpty()
                 && !number.equals(lastSpokenCountdown)
@@ -1009,6 +1001,25 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             lastSpokenSignal = signal;
             lastSpokenCountdown = null;
             lastSignalSpeechAt = now;
+            return;
+        }
+
+        boolean newSignTrack = result.signTrackId > 0L
+                && result.signTrackId != lastSpokenSignTrackId;
+        boolean correctedSign = result.signTrackId > 0L
+                && result.signTrackId == lastSpokenSignTrackId
+                && !result.signText.equals(lastSpokenSign)
+                && result.signConfidence >= .55f
+                && now - lastSignSpeechAt > 3_500L;
+        boolean repeatedSign = result.signText.equals(lastSpokenSign)
+                && now - lastSignSpeechAt > 30_000L;
+        if (!result.signText.isEmpty()
+                && ((newSignTrack && now - lastSignSpeechAt > 1_200L)
+                || correctedSign || repeatedSign)) {
+            speak("Biển báo, " + result.signText, TextToSpeech.QUEUE_FLUSH);
+            lastSpokenSign = result.signText;
+            lastSpokenSignTrackId = result.signTrackId;
+            lastSignSpeechAt = now;
         }
     }
 
@@ -1379,6 +1390,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         hazardResult.setText("PHÍA TRƯỚC\nĐANG QUAN SÁT");
         lastSpokenSignal = "";
         lastSpokenSign = "";
+        lastSpokenSignTrackId = -1L;
         lastSpokenCountdown = null;
         lastCountdownSpeechAt = 0;
         lastSpokenHazard = "";

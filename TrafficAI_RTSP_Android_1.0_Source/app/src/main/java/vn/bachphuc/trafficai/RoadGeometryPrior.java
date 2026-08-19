@@ -67,7 +67,9 @@ public final class RoadGeometryPrior {
     public static float adjustConfidence(float detectorConfidence, float geometryEvidence) {
         float detector = clamp(detectorConfidence, 0f, 1f);
         float geometry = clamp01(geometryEvidence);
-        return clamp(detector * (0.72f + 0.28f * geometry), 0f, 1f);
+        // Prior chỉ giảm tối đa khoảng 6,3% ở vùng kém thuận lợi. Nó dùng để xếp hạng,
+        // không được xóa một biển thật ở giữa/trái ảnh.
+        return clamp(detector * (0.92f + 0.08f * geometry), 0f, 1f);
     }
 
     /**

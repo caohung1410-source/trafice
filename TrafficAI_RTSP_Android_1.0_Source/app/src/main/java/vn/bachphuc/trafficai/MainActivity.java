@@ -128,7 +128,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             setStatus("Model đã có trong máy • bấm TẢI / MỞ AI để khởi tạo");
             modelProgress.setProgress(100);
         } else {
-            setStatus("Giao diện sẵn sàng • lần đầu cần tải khoảng 50 MB model AI");
+            setStatus("Giao diện sẵn sàng • AI đã đóng gói trong APK, lần đầu chỉ cần chép model");
         }
         CarTelemetryStore.updateConnection(false, false);
         requestGpsPermission();
@@ -424,8 +424,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void requestGpsPermission() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
+        if (hasAnyLocationPermission()) {
             startGps();
             return;
         }
@@ -439,34 +438,82 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST
-                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == LOCATION_PERMISSION_REQUEST && hasAnyLocationPermission()) {
             startGps();
         } else if (requestCode == LOCATION_PERMISSION_REQUEST) {
             speedResult.setText("GPS\nCHƯA CẤP QUYỀN");
+            mapView.setStatus("CHƯA CẤP QUYỀN VỊ TRÍ");
         }
+    }
+
+    private boolean hasAnyLocationPermission() {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     private void startGps() {
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-        if (locationManager == null
-                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) return;
+        if (locationManager == null || !hasAnyLocationPermission()) {
+            speedResult.setText("GPS\nCHƯA CẤP QUYỀN");
+            mapView.setStatus("CHƯA CẤP QUYỀN VỊ TRÍ");
+            return;
+        }
         try {
+            boolean requested = false;
+            Location initial = null;
+            boolean precise = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED;
+            if (precise && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER, 700L, 0f, locationListener);
+                initial = newest(initial,
+                        locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER));
+                requested = true;
+            }
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER, 1_000L, 0f, locationListener);
+                initial = newest(initial,
+                        locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER));
+                requested = true;
+            }
             locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER, 500L, 0f, locationListener);
-            speedResult.setText("GPS\nĐANG TÌM");
+                    LocationManager.PASSIVE_PROVIDER, 1_000L, 0f, locationListener);
+            initial = newest(initial,
+                    locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER));
+
+            if (initial != null) applyLocation(initial);
+            if (initial == null) {
+                speedResult.setText(requested ? "VỊ TRÍ\nĐANG TÌM" : "HÃY BẬT\nVỊ TRÍ");
+                mapView.setStatus(requested
+                        ? "ĐANG TÌM VỊ TRÍ • RA NGOÀI TRỜI"
+                        : "HÃY BẬT VỊ TRÍ TRÊN ĐIỆN THOẠI");
+            }
         } catch (Throwable error) {
             speedResult.setText("GPS\nKHÔNG SẴN SÀNG");
+            mapView.setStatus("KHÔNG ĐỌC ĐƯỢC VỊ TRÍ");
         }
+    }
+
+    private Location newest(Location first, Location second) {
+        if (first == null) return second;
+        if (second == null) return first;
+        return second.getTime() > first.getTime() ? second : first;
     }
 
     private void applyLocation(Location location) {
         if (destroyed || location == null) return;
         lastLocation = location;
-        if (mapVisible) updateMapPosition(location);
-        if (!location.hasSpeed()) return;
+        updateMapPosition(location);
+        if (!location.hasSpeed()) {
+            currentSpeedKmh = 0;
+            updateMapPosition(location);
+            speedResult.setText("TỐC ĐỘ GPS\n0 km/h");
+            CarTelemetryStore.updateSpeed(0);
+            return;
+        }
         if (location.hasAccuracy() && location.getAccuracy() > 45f) return;
         if (location.hasSpeedAccuracy()
                 && location.getSpeedAccuracyMetersPerSecond() > 5f) return;

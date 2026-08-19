@@ -11,6 +11,10 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/YoloDetector.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/CarTelemetryStore.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficCarAppService.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/OfflineGpsView.java"
+  "$project_root/app/src/main/res/xml/automotive_app_desc.xml"
   "$project_root/app/src/main/assets/sign_labels_vi.txt"
 )
 
@@ -34,4 +38,4 @@ if rg -n 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
 fi
 
 bash "$project_root/tools/run_pure_logic_test.sh"
-echo "verify_project: PASS • 82 labels • XML OK • credential persistence check OK"
+echo "verify_project: PASS • 82 labels • Android Auto descriptor • XML OK • credential persistence check OK"

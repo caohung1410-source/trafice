@@ -37,13 +37,20 @@ if command -v xmllint >/dev/null 2>&1; then
   done < <(find "$project_root/app/src/main" -name '*.xml' -print0)
 fi
 
-if rg -n 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
-  "$project_root/app/src/main/java" >/dev/null; then
+credential_match=false
+if command -v rg >/dev/null 2>&1; then
+  rg -n 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
+    "$project_root/app/src/main/java" >/dev/null && credential_match=true
+else
+  grep -REn 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
+    "$project_root/app/src/main/java" >/dev/null && credential_match=true
+fi
+if "$credential_match"; then
   echo "Không đạt: phát hiện khả năng lưu credential" >&2
   exit 1
 fi
 
 bash "$project_root/tools/run_pure_logic_test.sh"
-rg -q "org.maplibre.gl:android-sdk" "$project_root/app/build.gradle"
-rg -q "MAP_STYLE_URL" "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q "org.maplibre.gl:android-sdk" "$project_root/app/build.gradle"
+grep -q "MAP_STYLE_URL" "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 echo "verify_project: PASS • TrafficAI 2.1 MapLibre/offline/landmark memory • 82 labels • Android Auto • XML/credential OK"

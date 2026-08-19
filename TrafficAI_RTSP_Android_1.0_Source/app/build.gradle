@@ -10,8 +10,8 @@ android {
         applicationId 'vn.bachphuc.trafficai'
         minSdk 26
         targetSdk 36
-        versionCode 120
-        versionName '1.2.0-auto-test'
+        versionCode 121
+        versionName '1.2.1-ai-gps-fix'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }

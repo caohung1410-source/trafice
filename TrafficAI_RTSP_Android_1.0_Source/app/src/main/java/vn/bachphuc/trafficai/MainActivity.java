@@ -548,7 +548,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.2 • "
+        String metadata = "{\"name\":\"TrafficAI 2.2.1 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -722,8 +722,15 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     lastTrafficFetchAt = SystemClock.elapsedRealtime();
                     refreshTrafficMapButton.setEnabled(true);
                     redrawMapAnnotations();
-                    setStatus("Đã gộp " + features.size()
-                            + " điểm biển/đèn OSM với Map Memory cục bộ");
+                    String server = navigationDataService.getLastOverpassServer();
+                    if (features.isEmpty()) {
+                        setStatus("Đã kết nối " + server
+                                + " nhưng OSM chưa có biển/đèn trong vùng 5 km"
+                                + " • Map Memory vẫn hoạt động");
+                    } else {
+                        setStatus("Đã gộp " + features.size()
+                                + " điểm biển/đèn OSM với Map Memory • nguồn " + server);
+                    }
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
@@ -873,7 +880,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.2: AI sẵn sàng • Map Memory + Navigation");
+                    setStatus("TrafficAI 2.2.1: AI sẵn sàng • OSM fallback + Navigation");
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
@@ -931,7 +938,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.2: " + result.inferenceMs + " ms • "
+        aiBadge.setText("ADAS 2.2.1: " + result.inferenceMs + " ms • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (result.targetLocked ? " • KHÓA" : " • QUÉT")
                 + (currentLandmarkHint.isActive() ? " • NHỚ "

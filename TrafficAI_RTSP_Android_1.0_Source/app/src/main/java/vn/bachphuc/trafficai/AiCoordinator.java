@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.2: tracker nhiều frame và gợi ý vùng ảnh từ bộ nhớ tọa độ. */
+/** Điều phối thị giác 2.2.1: tracker nhiều frame và gợi ý vùng ảnh từ bộ nhớ tọa độ. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;

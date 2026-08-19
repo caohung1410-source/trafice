@@ -13,15 +13,25 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /** Client nhỏ cho Nominatim, Overpass và OSRM; mọi lời gọi phải chạy ngoài main thread. */
 public final class NavigationDataService {
     private static final String USER_AGENT =
             "TrafficAI-RTSP/2.2 (personal navigation; github.com/caohung1410-source/trafice)";
     private static final int MAX_RESPONSE_CHARS = 5_000_000;
+    private static final int OVERPASS_CONNECT_TIMEOUT_MS = 10_000;
+    private static final int OVERPASS_READ_TIMEOUT_MS = 28_000;
+    private static final String[] PUBLIC_OVERPASS_FALLBACKS = {
+            "https://overpass.kumi.systems/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter",
+            "https://overpass-api.de/api/interpreter"
+    };
     private static long lastNominatimAt;
+    private volatile String lastOverpassServer = "";
 
     public static final class Place {
         public final String displayName;
@@ -84,18 +94,21 @@ public final class NavigationDataService {
 
     public List<TrafficFeature> loadTrafficFeatures(
             double latitude, double longitude, String overpassUrl) throws Exception {
+        // Overpass chỉ cần tâm gần đúng cho bán kính 5 km. Làm tròn khoảng 1 km để
+        // không gửi tọa độ GPS chính xác của người dùng tới máy chủ công cộng.
+        double queryLatitude = roundForPublicMapQuery(latitude);
+        double queryLongitude = roundForPublicMapQuery(longitude);
         String query = String.format(Locale.US,
-                "[out:json][timeout:18];("
+                "[out:json][timeout:30];("
                         + "node(around:5000,%.7f,%.7f)[\"highway\"=\"traffic_signals\"];"
                         + "node(around:5000,%.7f,%.7f)[\"traffic_sign\"];"
                         + "node(around:5000,%.7f,%.7f)[\"highway\"=\"stop\"];"
                         + "node(around:5000,%.7f,%.7f)[\"highway\"=\"give_way\"];"
                         + ");out body 300;",
-                latitude, longitude, latitude, longitude,
-                latitude, longitude, latitude, longitude);
+                queryLatitude, queryLongitude, queryLatitude, queryLongitude,
+                queryLatitude, queryLongitude, queryLatitude, queryLongitude);
         String body = "data=" + encode(query);
-        JSONObject root = new JSONObject(requestJson(
-                "POST", validateUrl(overpassUrl), body));
+        JSONObject root = requestOverpassWithFallback(overpassUrl, query, body);
         JSONArray elements = root.optJSONArray("elements");
         List<TrafficFeature> features = new ArrayList<>();
         if (elements == null) return features;
@@ -114,6 +127,95 @@ public final class NavigationDataService {
                     element.optDouble("lat"), element.optDouble("lon")));
         }
         return features;
+    }
+
+    public String getLastOverpassServer() {
+        return lastOverpassServer;
+    }
+
+    private JSONObject requestOverpassWithFallback(
+            String configuredUrl, String query, String body) throws Exception {
+        List<String> endpoints = overpassEndpoints(configuredUrl);
+        List<String> failures = new ArrayList<>();
+        for (String endpoint : endpoints) {
+            try {
+                // GET tránh lỗi một số mạng di động/proxy chặn POST tới Overpass.
+                String response = requestJson(
+                        "GET", endpoint + "?data=" + encode(query), null,
+                        OVERPASS_CONNECT_TIMEOUT_MS, OVERPASS_READ_TIMEOUT_MS);
+                JSONObject root = new JSONObject(response);
+                if (!root.has("elements")) throw new IOException("phản hồi thiếu elements");
+                lastOverpassServer = URI.create(endpoint).getHost();
+                return root;
+            } catch (Throwable getError) {
+                failures.add(shortEndpointError(endpoint, getError));
+                // Với cụm public, timeout/quá tải thì chuyển ngay sang máy chủ khác,
+                // không lặp lại cùng server thêm gần 30 giây bằng POST.
+                if (endpoints.size() > 1 && !shouldRetryAsPost(getError)) continue;
+                try {
+                    // POST là đường lui cho máy chủ/proxy giới hạn chiều dài URL GET.
+                    String response = requestJson(
+                            "POST", endpoint, body,
+                            OVERPASS_CONNECT_TIMEOUT_MS, OVERPASS_READ_TIMEOUT_MS);
+                    JSONObject root = new JSONObject(response);
+                    if (!root.has("elements")) throw new IOException("phản hồi thiếu elements");
+                    lastOverpassServer = URI.create(endpoint).getHost();
+                    return root;
+                } catch (Throwable postError) {
+                    failures.add(shortEndpointError(endpoint, postError));
+                }
+            }
+        }
+        throw new IOException("Các máy chủ Overpass đang bận hoặc bị mạng chặn ("
+                + String.join("; ", failures) + ")");
+    }
+
+    private boolean shouldRetryAsPost(Throwable error) {
+        String message = error == null ? "" : String.valueOf(error.getMessage());
+        return message.contains("HTTP 405")
+                || message.contains("HTTP 413")
+                || message.contains("HTTP 414")
+                || message.contains("HTTP 431")
+                || message.contains("HTTP 501");
+    }
+
+    private List<String> overpassEndpoints(String configuredUrl) throws IOException {
+        String primary = validateUrl(configuredUrl);
+        Set<String> unique = new LinkedHashSet<>();
+        unique.add(primary);
+        String host = URI.create(primary).getHost();
+        if (isKnownPublicOverpassHost(host)) {
+            for (String fallback : PUBLIC_OVERPASS_FALLBACKS) unique.add(fallback);
+        }
+        return new ArrayList<>(unique);
+    }
+
+    private boolean isKnownPublicOverpassHost(String host) {
+        if (host == null) return false;
+        String normalized = host.toLowerCase(Locale.US);
+        return normalized.endsWith("overpass-api.de")
+                || normalized.equals("overpass.kumi.systems")
+                || normalized.equals("overpass.private.coffee");
+    }
+
+    private String shortEndpointError(String endpoint, Throwable error) {
+        String host;
+        try {
+            host = URI.create(endpoint).getHost();
+        } catch (Throwable ignored) {
+            host = "máy chủ";
+        }
+        String message = error == null ? "lỗi không rõ" : error.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            message = error == null ? "lỗi không rõ" : error.getClass().getSimpleName();
+        }
+        message = message.replaceAll("[\\r\\n]+", " ").trim();
+        if (message.length() > 80) message = message.substring(0, 80);
+        return host + ": " + message;
+    }
+
+    private double roundForPublicMapQuery(double value) {
+        return Math.round(value * 100d) / 100d;
     }
 
     public RoutePlan route(
@@ -204,14 +306,22 @@ public final class NavigationDataService {
     }
 
     private String requestJson(String method, String rawUrl, String body) throws Exception {
+        return requestJson(method, rawUrl, body, 12_000, 20_000);
+    }
+
+    private String requestJson(
+            String method, String rawUrl, String body,
+            int connectTimeoutMs, int readTimeoutMs) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) URI.create(validateUrl(rawUrl))
                 .toURL().openConnection();
         connection.setRequestMethod(method);
-        connection.setConnectTimeout(12_000);
-        connection.setReadTimeout(20_000);
+        connection.setConnectTimeout(connectTimeoutMs);
+        connection.setReadTimeout(readTimeoutMs);
+        connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent", USER_AGENT);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Accept-Language", "vi-VN,vi;q=0.9");
+        connection.setRequestProperty("Accept-Encoding", "identity");
         if (body != null) {
             byte[] payload = body.getBytes(StandardCharsets.UTF_8);
             connection.setDoOutput(true);

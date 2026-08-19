@@ -1,8 +1,16 @@
-# TrafficAI 2.2 • Navigation ARM64
+# TrafficAI 2.2.1 • Navigation ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
 
 ## Bản 2.2: dữ liệu biển/đèn OSM, tìm giọng nói và dẫn đường
+
+### Vá lỗi 2.2.1: không nạp được OSM mới
+
+- Tăng thời gian chờ Overpass vì máy chủ công cộng có thể xếp hàng lâu hơn 20 giây.
+- Thử GET rồi POST để vượt lỗi proxy/nhà mạng chặn một kiểu yêu cầu.
+- Nếu URL đang cấu hình là máy chủ Overpass công cộng mặc định, app tự thử lần lượt `overpass-api.de`, `overpass.kumi.systems` và `overpass.private.coffee`; URL riêng không bị tự động chuyển sang nhà cung cấp khác.
+- Tọa độ gửi tới Overpass được làm tròn khoảng 1 km trước khi truy vấn bán kính 5 km, không gửi GPS chính xác.
+- Phân biệt rõ “đã kết nối nhưng khu vực chưa có dữ liệu” với “máy chủ lỗi hoặc mạng chặn”.
 
 - Nạp các node `highway=traffic_signals`, `traffic_sign`, `stop` và `give_way` trong bán kính 5 km qua Overpass; cache SQLite để lần sau vẫn hiển thị khi mất mạng.
 - Gộp marker OSM với các điểm biển/đèn do AI Map Memory học được. Marker ghi rõ nguồn OSM hay điểm AI đã xác nhận.
@@ -13,7 +21,7 @@
 - Android Auto nhận điểm đến, bước rẽ kế tiếp, khoảng cách cùng trạng thái Map Memory; video vẫn chỉ chạy trên điện thoại.
 - Ba URL Nominatim/OSRM/Overpass nằm trong Cấu hình và được lưu cục bộ, nên có thể đổi nhà cung cấp mà không cập nhật APK.
 
-Tìm kiếm và tạo tuyến mới cần Internet. Tuyến và dữ liệu từ máy chủ công cộng chỉ dành cho bản thử nghiệm cá nhân, không có SLA và không thay thế ứng dụng dẫn đường thương mại. Nền bản đồ offline không đồng nghĩa với định tuyến offline; những điểm OSM đã tải được vẫn còn trong cache.
+Tìm kiếm và tạo tuyến mới cần Internet. Tuyến và dữ liệu từ máy chủ công cộng chỉ dành cho bản thử nghiệm cá nhân, không có SLA và không thay thế ứng dụng dẫn đường thương mại. Nền bản đồ offline không đồng nghĩa với định tuyến offline; những điểm OSM đã tải được vẫn còn trong cache. Khi bấm nạp OSM, app gửi tâm vùng đã làm tròn cho máy chủ Overpass đang cấu hình; nếu đó là một trong các máy chủ công cộng kể trên, app có thể thử các máy chủ công cộng còn lại khi lỗi.
 
 ## Bản 2.1: nền bản đồ thật và bộ nhớ tuyến đường
 
@@ -38,7 +46,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.2.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

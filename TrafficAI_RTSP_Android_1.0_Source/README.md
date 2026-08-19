@@ -1,4 +1,4 @@
-# TrafficAI RTSP 1.2 • Android Auto thử nghiệm cá nhân
+# TrafficAI RTSP 1.2.1 • Android Auto thử nghiệm cá nhân
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu và đọc số LED đếm ngược. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
 
@@ -10,6 +10,12 @@
 - Màn hình GPS offline trên điện thoại vẽ hướng và vệt di chuyển cục bộ; không gửi tọa độ ra máy chủ. Bản thử nghiệm chưa có nền đường phố/tên đường.
 - Android Auto hiển thị thẻ tốc độ/giới hạn, màu đèn/số giây, biển báo và trạng thái camera/AI.
 - Không chiếu video camera lên màn hình Android Auto; đây là giới hạn chủ động để giảm xao nhãng.
+
+## Vá lỗi 1.2.1
+
+- Hai model AI được đóng gói sẵn trong APK; lần mở AI đầu chỉ chép model vào vùng riêng, không cần Internet.
+- Vị trí dùng GPS, nhà mạng và vị trí gần nhất; chấp nhận cả quyền vị trí gần đúng để tránh kẹt “Đang tìm”.
+- Màn hình GPS ghi rõ trạng thái quyền/vị trí. Đây là vệt di chuyển offline, chưa có nền đường và tên đường.
 
 ## Những gì bản 1.1 đã có
 

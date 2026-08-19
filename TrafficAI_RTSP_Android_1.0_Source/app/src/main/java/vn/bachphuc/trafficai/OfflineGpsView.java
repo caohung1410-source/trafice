@@ -38,6 +38,7 @@ public final class OfflineGpsView extends View {
     private float bearing;
     private int speedKmh;
     private boolean hasFix;
+    private String statusMessage = "ĐANG TÌM VỊ TRÍ";
 
     public OfflineGpsView(Context context) {
         this(context, null);
@@ -72,6 +73,11 @@ public final class OfflineGpsView extends View {
         invalidate();
     }
 
+    public void setStatus(String value) {
+        statusMessage = value == null || value.trim().isEmpty() ? "ĐANG TÌM VỊ TRÍ" : value;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -85,7 +91,9 @@ public final class OfflineGpsView extends View {
         }
         if (!hasFix) {
             textPaint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("ĐANG TÌM GPS OFFLINE", width / 2f, height / 2f, textPaint);
+            textPaint.setTextSize(24f);
+            canvas.drawText(statusMessage, width / 2f, height / 2f, textPaint);
+            textPaint.setTextSize(34f);
             return;
         }
 
@@ -94,6 +102,7 @@ public final class OfflineGpsView extends View {
         textPaint.setTextAlign(Paint.Align.LEFT);
         canvas.drawText(speedKmh + " km/h", 24f, 48f, textPaint);
         textPaint.setTextSize(24f);
+        canvas.drawText("GPS OFFLINE • KHÔNG NỀN ĐƯỜNG", 24f, 82f, textPaint);
         canvas.drawText(String.format(Locale.US, "%.5f, %.5f", latitude, longitude),
                 24f, height - 24f, textPaint);
         textPaint.setTextSize(34f);

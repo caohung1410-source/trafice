@@ -22,7 +22,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="TrafficAI 2.1 • Map Memory"
+                android:text="TrafficAI 2.2 • Navigation"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp"
                 android:textStyle="bold" />
@@ -30,7 +30,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Nền đường thật • bản đồ offline • nhớ tọa độ biển/đèn"
+                android:text="Biển/đèn OSM • tìm bằng giọng nói • định tuyến"
                 android:textColor="#90A8C0"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -194,6 +194,120 @@
             android:layout_width="match_parent"
             android:layout_height="44dp"
             android:text="TẢI MAP OFFLINE QUANH ĐÂY 25 KM" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:paddingTop="4dp"
+            android:text="DỊCH VỤ MỞ • CÓ THỂ THAY MÁY CHỦ KHÔNG CẦN CẬP NHẬT APP"
+            android:textColor="#90A8C0"
+            android:textSize="10sp" />
+
+        <EditText
+            android:id="@+id/geocoderUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:hint="Máy chủ tìm kiếm Nominatim"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:text="https://nominatim.openstreetmap.org"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp" />
+
+        <EditText
+            android:id="@+id/routingUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:hint="Máy chủ định tuyến OSRM"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:text="https://router.project-osrm.org"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp" />
+
+        <EditText
+            android:id="@+id/overpassUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:hint="Máy chủ dữ liệu biển/đèn Overpass"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:text="https://overpass-api.de/api/interpreter"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/navigationPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/panel_background"
+        android:orientation="vertical"
+        android:padding="4dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/destinationSearchInput"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:hint="Nhập hoặc nói điểm đến"
+                android:imeOptions="actionGo"
+                android:inputType="textPostalAddress"
+                android:singleLine="true"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#7890A8"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/voiceSearchButton"
+                android:layout_width="64dp"
+                android:layout_height="44dp"
+                android:text="NÓI" />
+
+            <Button
+                android:id="@+id/routeButton"
+                android:layout_width="60dp"
+                android:layout_height="44dp"
+                android:text="ĐI" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/navigationInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="5dp"
+            android:text="Chưa chọn điểm đến"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/refreshTrafficMapButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:text="NẠP BIỂN / ĐÈN OSM" />
+
+            <Button
+                android:id="@+id/clearRouteButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:text="DỪNG DẪN ĐƯỜNG" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView

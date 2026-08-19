@@ -95,8 +95,14 @@ public final class TrafficCarAppService extends CarAppService {
                             .addText("Phía trước: " + value.hazard)
                             .build())
                     .addRow(new Row.Builder()
-                            .setTitle("Map Memory")
-                            .addText(value.landmark)
+                            .setTitle(value.navigationActive
+                                    ? "Dẫn đường: " + shortName(value.destination)
+                                    : "Map Memory")
+                            .addText(value.navigationActive
+                                    ? value.navigationInstruction + " • "
+                                    + distance(value.navigationDistanceMeters)
+                                    : value.landmark)
+                            .addText(value.navigationActive ? value.landmark : "Biển/đèn đã học")
                             .build())
                     .addRow(new Row.Builder()
                             .setTitle(value.cameraConnected ? "Camera RTSP đã kết nối" : "Chưa kết nối camera")
@@ -104,9 +110,21 @@ public final class TrafficCarAppService extends CarAppService {
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI 2.1 • Map Memory")
+                    .setTitle("TrafficAI 2.2 • Navigation")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
+        }
+
+        private String shortName(String value) {
+            if (value == null || value.isEmpty()) return "điểm đến";
+            int comma = value.indexOf(',');
+            return comma > 0 ? value.substring(0, comma) : value;
+        }
+
+        private String distance(double meters) {
+            return meters < 1_000d
+                    ? Math.round(meters) + " m"
+                    : String.format(java.util.Locale.US, "%.1f km", meters / 1_000d);
         }
     }
 }

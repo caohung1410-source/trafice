@@ -10,8 +10,8 @@ android {
         applicationId 'vn.bachphuc.trafficai'
         minSdk 26
         targetSdk 36
-        versionCode 210
-        versionName '2.1.0-map-memory-arm64'
+        versionCode 220
+        versionName '2.2.0-navigation-arm64'
 
         // Bản cài trực tiếp cho Samsung S23 Ultra và điện thoại Android 64-bit hiện đại.
         // Loại các thư viện native x86/32-bit không dùng tới để APK nhỏ và tải ổn định hơn.

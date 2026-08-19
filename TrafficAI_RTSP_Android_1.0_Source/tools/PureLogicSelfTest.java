@@ -1,8 +1,13 @@
 import vn.bachphuc.trafficai.CountdownTracker;
 import vn.bachphuc.trafficai.GeoMath;
+import vn.bachphuc.trafficai.NavigationInstruction;
+import vn.bachphuc.trafficai.NavigationSession;
 import vn.bachphuc.trafficai.RoadGeometryPrior;
+import vn.bachphuc.trafficai.RoutePlan;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
 import vn.bachphuc.trafficai.TrafficState;
+
+import java.util.Arrays;
 
 public final class PureLogicSelfTest {
     public static void main(String[] args) {
@@ -60,6 +65,41 @@ public final class PureLogicSelfTest {
         require(GeoMath.headingDifference(
                 GeoMath.averageHeading(350d, 10d, .5d), 0d) < .001d,
                 "Trung bình hướng 350/10 phải gần hướng Bắc");
+        require(GeoMath.distanceToSegmentMeters(
+                13.97659, 108.00696,
+                13.97609, 108.00695,
+                13.97709, 108.00695) < 3d,
+                "Điểm nằm sát đoạn tuyến phải có khoảng cách rất nhỏ");
+
+        String turnRight = NavigationInstruction.fromOsrm(
+                "turn", "right", "Lê Lợi", 0);
+        require(turnRight.contains("Rẽ phải") && turnRight.contains("Lê Lợi"),
+                "Maneuver OSRM phải đổi thành câu rẽ tiếng Việt");
+        require(NavigationInstruction.withDistance(turnRight, 120d).contains("120 mét"),
+                "Câu TTS phải kèm khoảng cách tới chỗ rẽ");
+
+        RoutePlan route = new RoutePlan(
+                "Quảng trường",
+                13.97809, 108.00695,
+                222d, 60d,
+                Arrays.asList(
+                        new RoutePlan.Point(13.97609, 108.00695),
+                        new RoutePlan.Point(13.97709, 108.00695),
+                        new RoutePlan.Point(13.97809, 108.00695)),
+                Arrays.asList(
+                        new RoutePlan.Step("Bắt đầu", 13.97609, 108.00695, 111d),
+                        new RoutePlan.Step("Rẽ phải", 13.97709, 108.00695, 111d),
+                        new RoutePlan.Step("Đã đến", 13.97809, 108.00695, 0d)));
+        NavigationSession navigation = new NavigationSession();
+        navigation.setPlan(route);
+        NavigationSession.Guidance firstGuide = navigation.update(13.97609, 108.00695);
+        require(firstGuide.active && firstGuide.instruction.contains("Rẽ phải"),
+                "Điều hướng phải bỏ bước depart và chỉ bước rẽ kế tiếp");
+        NavigationSession.Guidance advanced = navigation.update(13.97708, 108.00695);
+        require(advanced.instruction.contains("Đã đến"),
+                "Qua vị trí rẽ phải chuyển sang bước tiếp theo");
+        NavigationSession.Guidance arrived = navigation.update(13.97809, 108.00695);
+        require(arrived.arrived, "Đến trong 32 m phải kết thúc tuyến");
 
         System.out.println("PureLogicSelfTest: PASS");
     }

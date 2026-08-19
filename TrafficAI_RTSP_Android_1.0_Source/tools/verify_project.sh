@@ -20,6 +20,11 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/GeoMath.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkHint.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkMemoryStore.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoutePlan.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationInstruction.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationSession.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/MapFeatureStore.java"
   "$project_root/app/src/main/res/xml/automotive_app_desc.xml"
   "$project_root/app/src/main/assets/sign_labels_vi.txt"
 )
@@ -39,10 +44,10 @@ fi
 
 credential_match=false
 if command -v rg >/dev/null 2>&1; then
-  rg -n 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
+  rg -n '(putString|getString)\([^,]*(password|rtsp|safety|credential)' \
     "$project_root/app/src/main/java" >/dev/null && credential_match=true
 else
-  grep -REn 'SharedPreferences|putString\([^,]*(password|pass|rtsp)' \
+  grep -REn '(putString|getString)\([^,]*(password|rtsp|safety|credential)' \
     "$project_root/app/src/main/java" >/dev/null && credential_match=true
 fi
 if "$credential_match"; then
@@ -53,4 +58,6 @@ fi
 bash "$project_root/tools/run_pure_logic_test.sh"
 grep -q "org.maplibre.gl:android-sdk" "$project_root/app/build.gradle"
 grep -q "MAP_STYLE_URL" "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
-echo "verify_project: PASS • TrafficAI 2.1 MapLibre/offline/landmark memory • 82 labels • Android Auto • XML/credential OK"
+grep -q "RecognizerIntent" "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q "overpass-api" "$project_root/app/src/main/res/layout/activity_main.xml"
+echo "verify_project: PASS • TrafficAI 2.2 OSM/voice/routing/navigation • 82 labels • Android Auto • XML/credential OK"

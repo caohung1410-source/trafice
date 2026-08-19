@@ -18,6 +18,10 @@ public final class CarTelemetryStore {
         public final String sign;
         public final String hazard;
         public final String landmark;
+        public final String destination;
+        public final String navigationInstruction;
+        public final double navigationDistanceMeters;
+        public final boolean navigationActive;
         public final boolean targetLocked;
         public final boolean cameraConnected;
         public final boolean aiReady;
@@ -31,6 +35,10 @@ public final class CarTelemetryStore {
                 String sign,
                 String hazard,
                 String landmark,
+                String destination,
+                String navigationInstruction,
+                double navigationDistanceMeters,
+                boolean navigationActive,
                 boolean targetLocked,
                 boolean cameraConnected,
                 boolean aiReady) {
@@ -42,6 +50,10 @@ public final class CarTelemetryStore {
             this.sign = sign;
             this.hazard = hazard;
             this.landmark = landmark;
+            this.destination = destination;
+            this.navigationInstruction = navigationInstruction;
+            this.navigationDistanceMeters = navigationDistanceMeters;
+            this.navigationActive = navigationActive;
             this.targetLocked = targetLocked;
             this.cameraConnected = cameraConnected;
             this.aiReady = aiReady;
@@ -58,6 +70,10 @@ public final class CarTelemetryStore {
     private static volatile String sign = "Chưa thấy";
     private static volatile String hazard = "Đang quan sát";
     private static volatile String landmark = "Chưa có điểm gần";
+    private static volatile String destination = "";
+    private static volatile String navigationInstruction = "";
+    private static volatile double navigationDistanceMeters;
+    private static volatile boolean navigationActive;
     private static volatile boolean targetLocked;
     private static volatile boolean cameraConnected;
     private static volatile boolean aiReady;
@@ -68,7 +84,8 @@ public final class CarTelemetryStore {
     public static State snapshot() {
         return new State(
                 speedKmh, speedLimitKmh, limitSource, light, countdown, sign,
-                hazard, landmark, targetLocked,
+                hazard, landmark, destination, navigationInstruction,
+                navigationDistanceMeters, navigationActive, targetLocked,
                 cameraConnected, aiReady);
     }
 
@@ -108,6 +125,15 @@ public final class CarTelemetryStore {
             landmark = kind + ": " + hint.label + " • "
                     + Math.round(hint.distanceMeters) + " m";
         }
+        notifyListeners();
+    }
+
+    public static void updateNavigation(
+            String nextDestination, String instruction, double distanceMeters, boolean active) {
+        destination = nextDestination == null ? "" : nextDestination;
+        navigationInstruction = instruction == null ? "" : instruction;
+        navigationDistanceMeters = Math.max(0d, distanceMeters);
+        navigationActive = active;
         notifyListeners();
     }
 

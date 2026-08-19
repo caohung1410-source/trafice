@@ -1,0 +1,271 @@
+package vn.bachphuc.trafficai;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/** Client nhỏ cho Nominatim, Overpass và OSRM; mọi lời gọi phải chạy ngoài main thread. */
+public final class NavigationDataService {
+    private static final String USER_AGENT =
+            "TrafficAI-RTSP/2.2 (personal navigation; github.com/caohung1410-source/trafice)";
+    private static final int MAX_RESPONSE_CHARS = 5_000_000;
+    private static long lastNominatimAt;
+
+    public static final class Place {
+        public final String displayName;
+        public final double latitude;
+        public final double longitude;
+
+        public Place(String displayName, double latitude, double longitude) {
+            this.displayName = displayName == null ? "Điểm đến" : displayName;
+            this.latitude = latitude;
+            this.longitude = longitude;
+        }
+    }
+
+    public static final class TrafficFeature {
+        public static final String LIGHT = "LIGHT";
+        public static final String SIGN = "SIGN";
+
+        public final String osmId;
+        public final String kind;
+        public final String label;
+        public final double latitude;
+        public final double longitude;
+
+        public TrafficFeature(
+                String osmId, String kind, String label,
+                double latitude, double longitude) {
+            this.osmId = osmId;
+            this.kind = kind;
+            this.label = label;
+            this.latitude = latitude;
+            this.longitude = longitude;
+        }
+    }
+
+    public Place searchPlace(
+            String rawQuery, double nearLatitude, double nearLongitude,
+            String nominatimBaseUrl) throws Exception {
+        String query = rawQuery == null ? "" : rawQuery.trim();
+        if (query.length() < 2) throw new IOException("Hãy nhập điểm đến cụ thể hơn");
+        throttleNominatim();
+        String endpoint = normalizeEndpoint(nominatimBaseUrl, "/search");
+        double latDelta = 1.5d;
+        double lonDelta = 1.5d / Math.max(.25d,
+                Math.cos(Math.toRadians(nearLatitude)));
+        String viewbox = String.format(Locale.US, "%.6f,%.6f,%.6f,%.6f",
+                nearLongitude - lonDelta, nearLatitude + latDelta,
+                nearLongitude + lonDelta, nearLatitude - latDelta);
+        String url = endpoint
+                + "?format=jsonv2&limit=5&addressdetails=1&accept-language=vi"
+                + "&countrycodes=vn&viewbox=" + encode(viewbox)
+                + "&q=" + encode(query);
+        JSONArray result = new JSONArray(requestJson("GET", url, null));
+        if (result.length() == 0) throw new IOException("Không tìm thấy điểm đến: " + query);
+        JSONObject best = result.getJSONObject(0);
+        return new Place(
+                best.optString("display_name", query),
+                Double.parseDouble(best.getString("lat")),
+                Double.parseDouble(best.getString("lon")));
+    }
+
+    public List<TrafficFeature> loadTrafficFeatures(
+            double latitude, double longitude, String overpassUrl) throws Exception {
+        String query = String.format(Locale.US,
+                "[out:json][timeout:18];("
+                        + "node(around:5000,%.7f,%.7f)[\"highway\"=\"traffic_signals\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"traffic_sign\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"highway\"=\"stop\"];"
+                        + "node(around:5000,%.7f,%.7f)[\"highway\"=\"give_way\"];"
+                        + ");out body 300;",
+                latitude, longitude, latitude, longitude,
+                latitude, longitude, latitude, longitude);
+        String body = "data=" + encode(query);
+        JSONObject root = new JSONObject(requestJson(
+                "POST", validateUrl(overpassUrl), body));
+        JSONArray elements = root.optJSONArray("elements");
+        List<TrafficFeature> features = new ArrayList<>();
+        if (elements == null) return features;
+        for (int index = 0; index < elements.length(); index++) {
+            JSONObject element = elements.optJSONObject(index);
+            if (element == null || !element.has("lat") || !element.has("lon")) continue;
+            JSONObject tags = element.optJSONObject("tags");
+            if (tags == null) tags = new JSONObject();
+            String highway = tags.optString("highway", "");
+            boolean light = "traffic_signals".equals(highway);
+            String kind = light ? TrafficFeature.LIGHT : TrafficFeature.SIGN;
+            String label = light ? "Cột/điểm đèn tín hiệu OSM" : signLabel(tags, highway);
+            String id = element.optString("type", "node") + element.optLong("id", index);
+            features.add(new TrafficFeature(
+                    id, kind, label,
+                    element.optDouble("lat"), element.optDouble("lon")));
+        }
+        return features;
+    }
+
+    public RoutePlan route(
+            double startLatitude, double startLongitude,
+            Place destination, String osrmBaseUrl) throws Exception {
+        String endpoint = normalizeEndpoint(osrmBaseUrl, "/route/v1/driving");
+        String coordinates = String.format(Locale.US, "%.7f,%.7f;%.7f,%.7f",
+                startLongitude, startLatitude,
+                destination.longitude, destination.latitude);
+        String url = endpoint + "/" + coordinates
+                + "?alternatives=false&steps=true&geometries=geojson&overview=full";
+        JSONObject root = new JSONObject(requestJson("GET", url, null));
+        if (!"Ok".equals(root.optString("code"))) {
+            throw new IOException("Dịch vụ định tuyến trả về " + root.optString("code"));
+        }
+        JSONArray routes = root.optJSONArray("routes");
+        if (routes == null || routes.length() == 0) {
+            throw new IOException("Không tìm được tuyến đường phù hợp");
+        }
+        JSONObject route = routes.getJSONObject(0);
+        List<RoutePlan.Point> geometry = parseGeometry(
+                route.getJSONObject("geometry").getJSONArray("coordinates"));
+        List<RoutePlan.Step> steps = parseSteps(route.optJSONArray("legs"));
+        if (steps.isEmpty()) {
+            steps.add(new RoutePlan.Step(
+                    "Đi tới " + destination.displayName,
+                    destination.latitude, destination.longitude,
+                    route.optDouble("distance")));
+        }
+        return new RoutePlan(
+                destination.displayName,
+                destination.latitude,
+                destination.longitude,
+                route.optDouble("distance"),
+                route.optDouble("duration"),
+                geometry,
+                steps);
+    }
+
+    private List<RoutePlan.Point> parseGeometry(JSONArray coordinates) {
+        List<RoutePlan.Point> result = new ArrayList<>();
+        for (int index = 0; index < coordinates.length(); index++) {
+            JSONArray point = coordinates.optJSONArray(index);
+            if (point == null || point.length() < 2) continue;
+            result.add(new RoutePlan.Point(point.optDouble(1), point.optDouble(0)));
+        }
+        return result;
+    }
+
+    private List<RoutePlan.Step> parseSteps(JSONArray legs) {
+        List<RoutePlan.Step> result = new ArrayList<>();
+        if (legs == null) return result;
+        for (int legIndex = 0; legIndex < legs.length(); legIndex++) {
+            JSONArray steps = legs.optJSONObject(legIndex).optJSONArray("steps");
+            if (steps == null) continue;
+            for (int stepIndex = 0; stepIndex < steps.length(); stepIndex++) {
+                JSONObject step = steps.optJSONObject(stepIndex);
+                JSONObject maneuver = step == null ? null : step.optJSONObject("maneuver");
+                JSONArray location = maneuver == null ? null : maneuver.optJSONArray("location");
+                if (location == null || location.length() < 2) continue;
+                String instruction = NavigationInstruction.fromOsrm(
+                        maneuver.optString("type"), maneuver.optString("modifier"),
+                        step.optString("name"), maneuver.optInt("exit", 0));
+                result.add(new RoutePlan.Step(
+                        instruction,
+                        location.optDouble(1), location.optDouble(0),
+                        step.optDouble("distance")));
+            }
+        }
+        return result;
+    }
+
+    private String signLabel(JSONObject tags, String highway) {
+        if ("stop".equals(highway)) return "Biển STOP (OSM)";
+        if ("give_way".equals(highway)) return "Biển nhường đường (OSM)";
+        String raw = tags.optString("traffic_sign", "");
+        String maxspeed = tags.optString("maxspeed", "");
+        if (!maxspeed.isEmpty()) return "Giới hạn tốc độ " + maxspeed + " (OSM)";
+        if (raw.isEmpty()) return "Biển báo giao thông OSM";
+        return "Biển " + raw.replace(';', ',') + " (OSM)";
+    }
+
+    private synchronized void throttleNominatim() throws InterruptedException {
+        long now = System.currentTimeMillis();
+        long wait = 1_050L - (now - lastNominatimAt);
+        if (wait > 0L) Thread.sleep(wait);
+        lastNominatimAt = System.currentTimeMillis();
+    }
+
+    private String requestJson(String method, String rawUrl, String body) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) URI.create(validateUrl(rawUrl))
+                .toURL().openConnection();
+        connection.setRequestMethod(method);
+        connection.setConnectTimeout(12_000);
+        connection.setReadTimeout(20_000);
+        connection.setRequestProperty("User-Agent", USER_AGENT);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Accept-Language", "vi-VN,vi;q=0.9");
+        if (body != null) {
+            byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+            connection.setDoOutput(true);
+            connection.setRequestProperty(
+                    "Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+            connection.setFixedLengthStreamingMode(payload.length);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(payload);
+            }
+        }
+        int code = connection.getResponseCode();
+        InputStream stream = code >= 200 && code < 300
+                ? connection.getInputStream() : connection.getErrorStream();
+        String response = readLimited(stream);
+        connection.disconnect();
+        if (code < 200 || code >= 300) {
+            throw new IOException("HTTP " + code + (response.isEmpty() ? "" : ": "
+                    + response.substring(0, Math.min(180, response.length()))));
+        }
+        return response;
+    }
+
+    private String readLimited(InputStream stream) throws IOException {
+        if (stream == null) return "";
+        StringBuilder builder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            char[] buffer = new char[8_192];
+            int read;
+            while ((read = reader.read(buffer)) >= 0) {
+                if (builder.length() + read > MAX_RESPONSE_CHARS) {
+                    throw new IOException("Phản hồi dịch vụ bản đồ quá lớn");
+                }
+                builder.append(buffer, 0, read);
+            }
+        }
+        return builder.toString();
+    }
+
+    private String normalizeEndpoint(String raw, String path) throws IOException {
+        String value = validateUrl(raw);
+        while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
+        return value.endsWith(path) ? value : value + path;
+    }
+
+    private String validateUrl(String raw) throws IOException {
+        String value = raw == null ? "" : raw.trim();
+        if (!value.startsWith("https://")) {
+            throw new IOException("Dịch vụ bản đồ phải dùng HTTPS");
+        }
+        return value;
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+}

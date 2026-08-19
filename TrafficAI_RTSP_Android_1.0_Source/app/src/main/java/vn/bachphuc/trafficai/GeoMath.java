@@ -43,4 +43,21 @@ public final class GeoMath {
         double cos = Math.max(0.15d, Math.abs(Math.cos(Math.toRadians(latitude))));
         return Math.max(0d, km) / (111.32d * cos);
     }
+
+    public static double distanceToSegmentMeters(
+            double latitude, double longitude,
+            double startLatitude, double startLongitude,
+            double endLatitude, double endLongitude) {
+        double referenceLat = Math.toRadians(
+                (latitude + startLatitude + endLatitude) / 3d);
+        double metersPerLon = 111_320d * Math.max(.15d, Math.cos(referenceLat));
+        double px = (longitude - startLongitude) * metersPerLon;
+        double py = (latitude - startLatitude) * 111_320d;
+        double bx = (endLongitude - startLongitude) * metersPerLon;
+        double by = (endLatitude - startLatitude) * 111_320d;
+        double lengthSquared = bx * bx + by * by;
+        if (lengthSquared < .0001d) return Math.hypot(px, py);
+        double t = Math.max(0d, Math.min(1d, (px * bx + py * by) / lengthSquared));
+        return Math.hypot(px - bx * t, py - by * t);
+    }
 }

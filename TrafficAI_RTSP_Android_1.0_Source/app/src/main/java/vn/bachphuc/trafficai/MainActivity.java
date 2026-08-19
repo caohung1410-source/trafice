@@ -2,8 +2,12 @@ package vn.bachphuc.trafficai;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -13,10 +17,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -39,6 +45,8 @@ import androidx.media3.ui.PlayerView;
 
 import org.maplibre.android.MapLibre;
 import org.maplibre.android.annotations.MarkerOptions;
+import org.maplibre.android.annotations.Polyline;
+import org.maplibre.android.annotations.PolylineOptions;
 import org.maplibre.android.camera.CameraPosition;
 import org.maplibre.android.camera.CameraUpdateFactory;
 import org.maplibre.android.geometry.LatLng;
@@ -53,6 +61,7 @@ import org.maplibre.android.offline.OfflineRegionStatus;
 import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -66,12 +75,15 @@ import java.util.regex.Pattern;
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int LOCATION_PERMISSION_REQUEST = 1201;
+    private static final int VOICE_SEARCH_REQUEST = 1202;
     private static final long FRAME_INTERVAL_MS = 40L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
     private static final String MAP_STYLE_URL =
             "https://tiles.openfreemap.org/styles/liberty";
     private static final double OFFLINE_MAP_RADIUS_KM = 25d;
+    private static final long SEARCH_CACHE_MS = 30L * 24L * 60L * 60L * 1_000L;
+    private static final String PROVIDER_PREFS = "map_provider_settings";
     private static final Pattern SPEED_LIMIT_PATTERN = Pattern.compile(
             "(?i)giới hạn tốc độ\\s+(\\d{1,3})");
 
@@ -97,6 +109,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Button initAiButton;
     private Button mapButton;
     private Button downloadMapButton;
+    private LinearLayout navigationPanel;
+    private EditText destinationSearchInput;
+    private EditText geocoderUrlInput;
+    private EditText routingUrlInput;
+    private EditText overpassUrlInput;
+    private TextView navigationInfo;
+    private Button routeButton;
+    private Button voiceSearchButton;
+    private Button refreshTrafficMapButton;
+    private Button clearRouteButton;
 
     private ExoPlayer player;
     private Bitmap captureBitmap;
@@ -109,6 +131,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService networkWorker = Executors.newSingleThreadExecutor();
     private final AtomicBoolean frameBusy = new AtomicBoolean(false);
 
     private String lastSpokenSignal = "";
@@ -144,6 +167,20 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private long lastHintId = -1L;
     private long lastHintSpeechAt;
     private final Set<Long> mappedLandmarkIds = new HashSet<>();
+    private final Set<String> mappedOsmFeatureIds = new HashSet<>();
+    private MapFeatureStore mapFeatureStore;
+    private NavigationDataService navigationDataService;
+    private final NavigationSession navigationSession = new NavigationSession();
+    private RoutePlan currentRoutePlan;
+    private NavigationDataService.Place currentDestination;
+    private Polyline routePolyline;
+    private boolean trafficDataBusy;
+    private boolean routeBusy;
+    private double lastTrafficFetchLat = Double.NaN;
+    private double lastTrafficFetchLon = Double.NaN;
+    private long lastTrafficFetchAt;
+    private long offRouteSince;
+    private long lastReplanAt;
 
     private final LocationListener locationListener = this::applyLocation;
 
@@ -167,6 +204,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
         modelRepository = new ModelRepository(this);
         landmarkStore = new LandmarkMemoryStore(this);
+        mapFeatureStore = new MapFeatureStore(this);
+        navigationDataService = new NavigationDataService();
         textToSpeech = new TextToSpeech(this, this);
         initBaseMap(savedInstanceState);
         initPlayer();
@@ -179,6 +218,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             setStatus("Giao diện sẵn sàng • AI đã đóng gói trong APK, lần đầu chỉ cần chép model");
         }
         CarTelemetryStore.updateConnection(false, false);
+        restoreProviderSettings();
         updateMapButtonCount();
         checkOfflineMapStatus();
         requestGpsPermission();
@@ -208,6 +248,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         initAiButton = findViewById(R.id.initAiButton);
         mapButton = findViewById(R.id.mapButton);
         downloadMapButton = findViewById(R.id.downloadMapButton);
+        navigationPanel = findViewById(R.id.navigationPanel);
+        destinationSearchInput = findViewById(R.id.destinationSearchInput);
+        geocoderUrlInput = findViewById(R.id.geocoderUrlInput);
+        routingUrlInput = findViewById(R.id.routingUrlInput);
+        overpassUrlInput = findViewById(R.id.overpassUrlInput);
+        navigationInfo = findViewById(R.id.navigationInfo);
+        routeButton = findViewById(R.id.routeButton);
+        voiceSearchButton = findViewById(R.id.voiceSearchButton);
+        refreshTrafficMapButton = findViewById(R.id.refreshTrafficMapButton);
+        clearRouteButton = findViewById(R.id.clearRouteButton);
         mapView = findViewById(R.id.mapView);
         baseMapView = findViewById(R.id.baseMapView);
     }
@@ -236,6 +286,15 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         initAiButton.setOnClickListener(view -> initializeAi());
         mapButton.setOnClickListener(view -> toggleMap());
         downloadMapButton.setOnClickListener(view -> downloadOfflineMap());
+        voiceSearchButton.setOnClickListener(view -> startVoiceDestinationSearch());
+        routeButton.setOnClickListener(view -> searchAndRoute());
+        refreshTrafficMapButton.setOnClickListener(view -> refreshTrafficMapData(true));
+        clearRouteButton.setOnClickListener(view -> clearNavigation());
+        destinationSearchInput.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId != EditorInfo.IME_ACTION_GO) return false;
+            searchAndRoute();
+            return true;
+        });
         limit40.setOnClickListener(view -> setSpeedLimit(40, "Đặt thủ công"));
         limit50.setOnClickListener(view -> setSpeedLimit(50, "Đặt thủ công"));
         limit60.setOnClickListener(view -> setSpeedLimit(60, "Đặt thủ công"));
@@ -252,6 +311,180 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         });
     }
 
+    private void restoreProviderSettings() {
+        SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
+        geocoderUrlInput.setText(preferences.getString(
+                "geocoder", "https://nominatim.openstreetmap.org"));
+        routingUrlInput.setText(preferences.getString(
+                "routing", "https://router.project-osrm.org"));
+        overpassUrlInput.setText(preferences.getString(
+                "overpass", "https://overpass-api.de/api/interpreter"));
+    }
+
+    private void saveProviderSettings() {
+        getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
+                .putString("geocoder", text(geocoderUrlInput))
+                .putString("routing", text(routingUrlInput))
+                .putString("overpass", text(overpassUrlInput))
+                .apply();
+    }
+
+    private void startVoiceDestinationSearch() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "vi-VN");
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Bạn muốn đi đâu?");
+        try {
+            startActivityForResult(intent, VOICE_SEARCH_REQUEST);
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(this,
+                    "Máy chưa có dịch vụ nhận dạng giọng nói. Hãy cài Google Speech Services.",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != VOICE_SEARCH_REQUEST || resultCode != RESULT_OK || data == null) return;
+        ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        if (results == null || results.isEmpty()) {
+            setStatus("Không nghe rõ điểm đến, hãy thử nói lại");
+            return;
+        }
+        String destination = results.get(0).trim();
+        destinationSearchInput.setText(destination);
+        setStatus("Đã nghe: " + destination + " • đang tìm tuyến");
+        searchAndRoute();
+    }
+
+    private void searchAndRoute() {
+        if (routeBusy) return;
+        Location origin = lastLocation;
+        String query = text(destinationSearchInput);
+        if (origin == null) {
+            setStatus("Cần có GPS trước khi tìm đường");
+            return;
+        }
+        if (query.length() < 2) {
+            setStatus("Hãy nhập hoặc nói điểm đến");
+            return;
+        }
+        saveProviderSettings();
+        String geocoderEndpoint = text(geocoderUrlInput);
+        String routingEndpoint = text(routingUrlInput);
+        routeBusy = true;
+        routeButton.setEnabled(false);
+        voiceSearchButton.setEnabled(false);
+        navigationInfo.setText("Đang tìm “" + query + "”…");
+        setStatus("Đang tìm địa điểm bằng Nominatim • chỉ gửi một truy vấn do người dùng yêu cầu");
+        double startLat = origin.getLatitude();
+        double startLon = origin.getLongitude();
+        networkWorker.execute(() -> {
+            try {
+                NavigationDataService.Place place = mapFeatureStore.cachedPlace(
+                        query, SEARCH_CACHE_MS);
+                if (place == null) {
+                    place = navigationDataService.searchPlace(
+                            query, startLat, startLon, geocoderEndpoint);
+                    mapFeatureStore.cachePlace(query, place, System.currentTimeMillis());
+                }
+                RoutePlan plan = navigationDataService.route(
+                        startLat, startLon, place, routingEndpoint);
+                NavigationDataService.Place selected = place;
+                runOnUiThread(() -> applyRoutePlan(selected, plan, false));
+            } catch (Throwable error) {
+                runOnUiThread(() -> finishRouteError(error));
+            }
+        });
+    }
+
+    private void routeToCurrentDestination(boolean replan) {
+        if (routeBusy || currentDestination == null || lastLocation == null) return;
+        routeBusy = true;
+        routeButton.setEnabled(false);
+        NavigationDataService.Place destination = currentDestination;
+        String routingEndpoint = text(routingUrlInput);
+        double startLat = lastLocation.getLatitude();
+        double startLon = lastLocation.getLongitude();
+        networkWorker.execute(() -> {
+            try {
+                RoutePlan plan = navigationDataService.route(
+                        startLat, startLon, destination, routingEndpoint);
+                runOnUiThread(() -> applyRoutePlan(destination, plan, replan));
+            } catch (Throwable error) {
+                runOnUiThread(() -> finishRouteError(error));
+            }
+        });
+    }
+
+    private void applyRoutePlan(
+            NavigationDataService.Place destination, RoutePlan plan, boolean replan) {
+        if (destroyed) return;
+        routeBusy = false;
+        routeButton.setEnabled(true);
+        voiceSearchButton.setEnabled(true);
+        currentDestination = destination;
+        currentRoutePlan = plan;
+        navigationSession.setPlan(plan);
+        offRouteSince = 0L;
+        navigationInfo.setText((replan ? "Đã tính lại • " : "")
+                + shortPlaceName(destination.displayName) + " • "
+                + formatDistance(plan.distanceMeters) + " • "
+                + formatDuration(plan.durationSeconds));
+        CarTelemetryStore.updateNavigation(
+                destination.displayName, "Đã có tuyến", plan.distanceMeters, true);
+        if (!mapVisible) toggleMap();
+        redrawMapAnnotations();
+        setStatus((replan ? "Đã tính lại tuyến" : "Đã tạo tuyến")
+                + " • dữ liệu định tuyến OSRM/OpenStreetMap");
+        if (ttsReady) speak(
+                (replan ? "Đã tính lại tuyến đường" : "Đã tạo tuyến đến "
+                        + shortPlaceName(destination.displayName)),
+                TextToSpeech.QUEUE_ADD);
+    }
+
+    private void finishRouteError(Throwable error) {
+        if (destroyed) return;
+        routeBusy = false;
+        routeButton.setEnabled(true);
+        voiceSearchButton.setEnabled(true);
+        String message = safeMessage(error);
+        navigationInfo.setText("Không tạo được tuyến: " + message);
+        setStatus("Lỗi tìm đường: " + message
+                + " • kiểm tra Internet hoặc đổi máy chủ trong Cấu hình");
+    }
+
+    private void clearNavigation() {
+        navigationSession.clear();
+        currentRoutePlan = null;
+        currentDestination = null;
+        offRouteSince = 0L;
+        navigationInfo.setText("Chưa chọn điểm đến");
+        CarTelemetryStore.updateNavigation("", "", 0d, false);
+        redrawMapAnnotations();
+        setStatus("Đã dừng dẫn đường");
+    }
+
+    private String shortPlaceName(String value) {
+        if (value == null || value.trim().isEmpty()) return "điểm đến";
+        String[] parts = value.split(",");
+        return parts.length == 0 ? value : parts[0].trim();
+    }
+
+    private String formatDistance(double meters) {
+        if (meters < 1_000d) return Math.round(meters) + " m";
+        return String.format(Locale.US, "%.1f km", meters / 1_000d);
+    }
+
+    private String formatDuration(double seconds) {
+        int minutes = Math.max(1, (int) Math.round(seconds / 60d));
+        if (minutes < 60) return minutes + " phút";
+        return minutes / 60 + " giờ " + minutes % 60 + " phút";
+    }
+
     private void initBaseMap(Bundle savedInstanceState) {
         offlineManager = OfflineManager.getInstance(this);
         offlineManager.setOfflineMapboxTileCountLimit(10_000L);
@@ -263,9 +496,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 if (destroyed) return;
                 mapStyleReady = true;
                 mapView.setBasemapVisible(true);
-                mappedLandmarkIds.clear();
-                refreshLandmarkMarkers();
-                if (lastLocation != null) updateMapPosition(lastLocation);
+                redrawMapAnnotations();
+                if (lastLocation != null) {
+                    updateMapPosition(lastLocation);
+                    refreshTrafficMapData(false);
+                }
                 setStatus("Nền bản đồ đã sẵn sàng • có thể tải vùng offline 25 km");
             });
         });
@@ -313,7 +548,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.1 • "
+        String metadata = "{\"name\":\"TrafficAI 2.2 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -401,6 +636,106 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     .title(kind + ": " + landmark.label)
                     .snippet("Đã xác nhận " + landmark.confirmations + " lần"));
         }
+    }
+
+    private void redrawMapAnnotations() {
+        if (!mapStyleReady || baseMap == null) return;
+        baseMap.clear();
+        routePolyline = null;
+        mappedLandmarkIds.clear();
+        mappedOsmFeatureIds.clear();
+        refreshLandmarkMarkers();
+        refreshCachedOsmMarkers();
+        drawCurrentRoute();
+    }
+
+    private void refreshCachedOsmMarkers() {
+        if (baseMap == null || mapFeatureStore == null || lastLocation == null) return;
+        List<NavigationDataService.TrafficFeature> features = mapFeatureStore.nearbyFeatures(
+                lastLocation.getLatitude(), lastLocation.getLongitude(), 12_000d, 260);
+        for (NavigationDataService.TrafficFeature feature : features) {
+            if (!mappedOsmFeatureIds.add(feature.osmId)) continue;
+            String kind = NavigationDataService.TrafficFeature.LIGHT.equals(feature.kind)
+                    ? "ĐÈN OSM" : "BIỂN OSM";
+            baseMap.addMarker(new MarkerOptions()
+                    .position(new LatLng(feature.latitude, feature.longitude))
+                    .title(kind + ": " + feature.label)
+                    .snippet("Dữ liệu OpenStreetMap đã cache trong máy"));
+        }
+        if (refreshTrafficMapButton != null) {
+            refreshTrafficMapButton.setText("BIỂN / ĐÈN OSM • " + features.size());
+        }
+    }
+
+    private void drawCurrentRoute() {
+        if (baseMap == null || currentRoutePlan == null) return;
+        List<LatLng> points = new ArrayList<>();
+        for (RoutePlan.Point point : currentRoutePlan.geometry) {
+            points.add(new LatLng(point.latitude, point.longitude));
+        }
+        if (points.size() >= 2) {
+            routePolyline = baseMap.addPolyline(new PolylineOptions()
+                    .addAll(points)
+                    .color(Color.rgb(0, 145, 255))
+                    .width(8f));
+        }
+        baseMap.addMarker(new MarkerOptions()
+                .position(new LatLng(
+                        currentRoutePlan.destinationLatitude,
+                        currentRoutePlan.destinationLongitude))
+                .title("ĐIỂM ĐẾN")
+                .snippet(shortPlaceName(currentRoutePlan.destinationName)));
+    }
+
+    private void refreshTrafficMapData(boolean force) {
+        Location location = lastLocation;
+        if (location == null || mapFeatureStore == null || navigationDataService == null) {
+            setStatus("Cần vị trí GPS trước khi nạp biển và đèn OSM");
+            return;
+        }
+        if (mapStyleReady) redrawMapAnnotations();
+        long now = SystemClock.elapsedRealtime();
+        double moved = Double.isNaN(lastTrafficFetchLat) ? Double.POSITIVE_INFINITY
+                : GeoMath.distanceMeters(
+                lastTrafficFetchLat, lastTrafficFetchLon,
+                location.getLatitude(), location.getLongitude());
+        if (trafficDataBusy || (!force && moved < 2_000d
+                && now - lastTrafficFetchAt < 30L * 60L * 1_000L)) return;
+
+        saveProviderSettings();
+        String endpoint = text(overpassUrlInput);
+        double latitude = location.getLatitude();
+        double longitude = location.getLongitude();
+        trafficDataBusy = true;
+        refreshTrafficMapButton.setEnabled(false);
+        refreshTrafficMapButton.setText("ĐANG NẠP OSM…");
+        networkWorker.execute(() -> {
+            try {
+                List<NavigationDataService.TrafficFeature> features =
+                        navigationDataService.loadTrafficFeatures(latitude, longitude, endpoint);
+                mapFeatureStore.saveFeatures(features, System.currentTimeMillis());
+                runOnUiThread(() -> {
+                    if (destroyed) return;
+                    trafficDataBusy = false;
+                    lastTrafficFetchLat = latitude;
+                    lastTrafficFetchLon = longitude;
+                    lastTrafficFetchAt = SystemClock.elapsedRealtime();
+                    refreshTrafficMapButton.setEnabled(true);
+                    redrawMapAnnotations();
+                    setStatus("Đã gộp " + features.size()
+                            + " điểm biển/đèn OSM với Map Memory cục bộ");
+                });
+            } catch (Throwable error) {
+                runOnUiThread(() -> {
+                    if (destroyed) return;
+                    trafficDataBusy = false;
+                    refreshTrafficMapButton.setEnabled(true);
+                    refreshTrafficMapButton.setText("THỬ LẠI NẠP BIỂN / ĐÈN");
+                    setStatus("Không nạp được OSM mới: " + safeMessage(error)
+                            + " • vẫn hiển thị dữ liệu đã cache");
+                });
+            }
+        });
     }
 
     private void updateMapButtonCount() {
@@ -538,7 +873,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.1: AI sẵn sàng • Map Memory đang học tuyến đường");
+                    setStatus("TrafficAI 2.2: AI sẵn sàng • Map Memory + Navigation");
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
@@ -596,7 +931,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.1: " + result.inferenceMs + " ms • "
+        aiBadge.setText("ADAS 2.2: " + result.inferenceMs + " ms • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (result.targetLocked ? " • KHÓA" : " • QUÉT")
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
@@ -679,13 +1014,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         mapVisible = !mapVisible;
         baseMapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
+        navigationPanel.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         playerView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         mapButton.setText(mapVisible ? "CAMERA" : "BẢN ĐỒ");
         if (mapVisible && lastLocation != null) {
             lastMapCameraAt = 0L;
+            redrawMapAnnotations();
             updateMapPosition(lastLocation);
+            refreshTrafficMapData(false);
         } else {
             updateMapButtonCount();
         }
@@ -777,6 +1115,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (location.hasBearing()) lastTravelBearing = location.getBearing();
         updateMapPosition(location);
         updateLandmarkHint(location);
+        updateNavigationGuidance(location);
         if (!location.hasSpeed()) {
             currentSpeedKmh = 0;
             updateMapPosition(location);
@@ -796,6 +1135,48 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         speedResult.setText("TỐC ĐỘ GPS\n" + currentSpeedKmh + " km/h");
         CarTelemetryStore.updateSpeed(currentSpeedKmh);
         evaluateOverSpeed();
+    }
+
+    private void updateNavigationGuidance(Location location) {
+        RoutePlan plan = navigationSession.getPlan();
+        if (plan == null || location == null) return;
+        NavigationSession.Guidance guidance = navigationSession.update(
+                location.getLatitude(), location.getLongitude());
+        if (!guidance.active) return;
+        String text = guidance.arrived
+                ? guidance.instruction
+                : guidance.instruction + " • " + formatDistance(guidance.distanceMeters);
+        navigationInfo.setText(text);
+        CarTelemetryStore.updateNavigation(
+                plan.destinationName, guidance.instruction,
+                guidance.distanceMeters, true);
+        if (guidance.shouldSpeak && ttsReady) {
+            speak(guidance.arrived ? guidance.instruction
+                    : NavigationInstruction.withDistance(
+                    guidance.instruction, guidance.distanceMeters),
+                    TextToSpeech.QUEUE_ADD);
+        }
+        if (guidance.arrived) {
+            navigationSession.clear();
+            currentRoutePlan = null;
+            currentDestination = null;
+            CarTelemetryStore.updateNavigation("", "Đã đến nơi", 0d, false);
+            redrawMapAnnotations();
+            setStatus("Đã đến điểm đến");
+            return;
+        }
+
+        long now = SystemClock.elapsedRealtime();
+        if (guidance.offRoute) {
+            if (offRouteSince == 0L) offRouteSince = now;
+            if (now - offRouteSince >= 8_000L && now - lastReplanAt >= 30_000L) {
+                lastReplanAt = now;
+                setStatus("Xe đã lệch tuyến • đang tính lại đường");
+                routeToCurrentDestination(true);
+            }
+        } else {
+            offRouteSince = 0L;
+        }
     }
 
     private void updateMapPosition(Location location) {
@@ -884,8 +1265,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void updateLandmarkHint(Location location) {
         if (landmarkStore == null || location == null) return;
         float heading = location.hasBearing() ? location.getBearing() : lastTravelBearing;
-        currentLandmarkHint = landmarkStore.findNearby(
+        LandmarkHint learnedHint = landmarkStore.findNearby(
                 location.getLatitude(), location.getLongitude(), heading, 160d);
+        currentLandmarkHint = learnedHint.isActive()
+                ? learnedHint : nearbyOsmHint(location, 180d);
         AiCoordinator engine = aiCoordinator;
         if (engine != null) engine.setLandmarkHint(currentLandmarkHint);
         CarTelemetryStore.updateLandmark(currentLandmarkHint);
@@ -907,6 +1290,34 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             lastHintId = currentLandmarkHint.id;
             lastHintSpeechAt = now;
         }
+    }
+
+    private LandmarkHint nearbyOsmHint(Location location, double radiusMeters) {
+        if (mapFeatureStore == null) return LandmarkHint.NONE;
+        List<NavigationDataService.TrafficFeature> features = mapFeatureStore.nearbyFeatures(
+                location.getLatitude(), location.getLongitude(), radiusMeters, 20);
+        NavigationDataService.TrafficFeature best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        for (NavigationDataService.TrafficFeature feature : features) {
+            double distance = GeoMath.distanceMeters(
+                    location.getLatitude(), location.getLongitude(),
+                    feature.latitude, feature.longitude);
+            if (distance < bestDistance) {
+                best = feature;
+                bestDistance = distance;
+            }
+        }
+        if (best == null) return LandmarkHint.NONE;
+        boolean light = NavigationDataService.TrafficFeature.LIGHT.equals(best.kind);
+        long syntheticId = 4_000_000_000L + (best.osmId.hashCode() & 0x7fffffffL);
+        return new LandmarkHint(
+                syntheticId,
+                light ? LandmarkHint.TYPE_LIGHT : LandmarkHint.TYPE_SIGN,
+                best.label,
+                light ? .68f : .80f,
+                light ? .34f : .45f,
+                bestDistance,
+                1);
     }
 
     private void updateLimitFromSign(AiResult result) {
@@ -1042,6 +1453,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     @Override
     protected void onPause() {
         stopFramePump();
+        saveProviderSettings();
         if (baseMapView != null) baseMapView.onPause();
         super.onPause();
     }
@@ -1069,6 +1481,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         destroyed = true;
         stopFramePump();
         frameBusy.set(false);
+        networkWorker.shutdownNow();
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
             locationManager = null;
@@ -1100,6 +1513,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (landmarkStore != null) {
             landmarkStore.close();
             landmarkStore = null;
+        }
+        if (mapFeatureStore != null) {
+            mapFeatureStore.close();
+            mapFeatureStore = null;
         }
         if (baseMapView != null) baseMapView.onDestroy();
         baseMap = null;

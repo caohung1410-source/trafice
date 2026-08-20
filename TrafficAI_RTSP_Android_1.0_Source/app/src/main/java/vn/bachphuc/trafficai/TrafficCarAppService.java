@@ -105,12 +105,12 @@ public final class TrafficCarAppService extends CarAppService {
                             .addText(value.navigationActive ? value.landmark : "Biển/đèn đã học")
                             .build())
                     .addRow(new Row.Builder()
-                            .setTitle(value.cameraConnected ? "Camera RTSP đã kết nối" : "Chưa kết nối camera")
+                            .setTitle(value.cameraConnected ? "Camera đã kết nối" : "Chưa kết nối camera")
                             .addText(value.aiReady ? "AI sẵn sàng" : "Mở AI trên điện thoại")
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI Drive 2.3")
+                    .setTitle("TrafficAI Drive 2.3.1")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
         }

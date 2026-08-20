@@ -8,6 +8,7 @@ import vn.bachphuc.trafficai.RoutePlan;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
 import vn.bachphuc.trafficai.SignDecisionPolicy;
 import vn.bachphuc.trafficai.SignTrackMath;
+import vn.bachphuc.trafficai.SpeedSignPolicy;
 import vn.bachphuc.trafficai.TrafficState;
 
 import java.util.Arrays;
@@ -15,10 +16,12 @@ import java.util.Arrays;
 public final class PureLogicSelfTest {
     public static void main(String[] args) {
         String url = RtspUrlBuilder.build(
-                "", "192.168.1.108", "554", "admin", "A b@1",
+                "", "192.168.1.108", "554", "admin", "DUMMY PASSWORD WITH SPACE",
                 "/cam/realmonitor?channel=1&subtype=1");
-        require(url.contains("A%20b%401"), "Mật khẩu phải được URI-encode");
-        require(!RtspUrlBuilder.redact(url).contains("A%20b%401"), "Log không được lộ mật khẩu");
+        require(url.contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
+                "Mật khẩu giữ chỗ phải được URI-encode");
+        require(!RtspUrlBuilder.redact(url).contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
+                "Log không được lộ mật khẩu giữ chỗ");
 
         CountdownTracker tracker = new CountdownTracker();
         long t = 1_000;
@@ -67,6 +70,10 @@ public final class PureLogicSelfTest {
                 "Hai lớp hòa phiếu không được xác nhận chỉ vì độ tin cậy cao");
         require(SignDecisionPolicy.evaluate(3, 4, .24f, .31f).confirmed,
                 "Ba phiếu cùng lớp phải giữ được biển xa");
+        require(!SignDecisionPolicy.evaluate(3, 4, .19f, .25f).confirmed,
+                "Ba khung rất yếu chưa đủ để đọc biển");
+        require(SignDecisionPolicy.evaluate(4, 5, .18f, .23f).confirmed,
+                "Bốn phiếu cùng track phải giữ được biển rất xa");
         require(!SignDecisionPolicy.evaluate(2, 5, .80f, .90f).confirmed,
                 "Không xác nhận lớp chỉ chiếm thiểu số trên một track");
         require(SignTrackMath.affinity(
@@ -77,6 +84,19 @@ public final class PureLogicSelfTest {
                 100f, 100f, 120f, 120f,
                 500f, 100f, 520f, 120f) < .20f,
                 "Hai biển cùng cỡ nhưng ở xa không được nhập chung track");
+
+        SpeedSignPolicy.Parsed speed50 = SpeedSignPolicy.parse(
+                "Giới hạn tốc độ 50 km/h");
+        require(speed50 != null && !speed50.endsLimit && speed50.limitKmh == 50,
+                "Biển 50 phải cập nhật giới hạn tốc độ AI");
+        SpeedSignPolicy.Parsed end50 = SpeedSignPolicy.parse(
+                "Hết giới hạn tốc độ 50 km/h");
+        require(end50 != null && end50.endsLimit,
+                "Biển hết giới hạn phải xóa giới hạn AI cũ");
+        require(SpeedSignPolicy.parse("Cấm rẽ trái") == null,
+                "Biển không liên quan không được đổi giới hạn tốc độ");
+        require(SpeedSignPolicy.parse("Giới hạn tốc độ 180 km/h") == null,
+                "Giới hạn ngoài phạm vi hợp lệ phải bị từ chối");
 
         require(LanePreference.LEFT.scanSlot(0) == -1
                         && LanePreference.LEFT.scanSlot(1) == -1,

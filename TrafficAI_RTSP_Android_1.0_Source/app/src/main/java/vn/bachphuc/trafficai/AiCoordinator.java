@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.3: tracker từng biển, bộ nhớ tọa độ và ưu tiên làn xe. */
+/** Điều phối thị giác 2.3.1: tracker từng biển, bộ nhớ tọa độ và ưu tiên làn xe. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
@@ -238,12 +238,12 @@ public final class AiCoordinator implements AutoCloseable {
         else if (tile == null) lastVisionMode = "BIỂN TOÀN CẢNH";
         List<Detection> raw = signDetector.detect(
                 frame, tile,
-                hint.expectsSign() ? 0.14f : tile == null ? 0.17f : 0.16f,
-                null, 30);
+                hint.expectsSign() ? 0.11f : tile == null ? 0.15f : 0.13f,
+                null, 40);
         List<Detection> signs = new ArrayList<>();
         SignalCandidate signal = null;
         for (Detection detection : raw) {
-            if (detection.box.width() < 4f || detection.box.height() < 4f) continue;
+            if (detection.box.width() < 3f || detection.box.height() < 3f) continue;
             float centerX = detection.box.centerX() / frame.getWidth();
             float centerY = detection.box.centerY() / frame.getHeight();
             boolean signalClass = detection.classId == SIGN_GREEN_LIGHT_CLASS
@@ -283,7 +283,7 @@ public final class AiCoordinator implements AutoCloseable {
             }
             signs.add(adjusted);
         }
-        return new SignPass(YoloDetector.mergeNms(signs, 0.36f, 16), signal);
+        return new SignPass(YoloDetector.mergeNms(signs, 0.36f, 20), signal);
     }
 
     private RectF nextLightTile(Bitmap frame) {

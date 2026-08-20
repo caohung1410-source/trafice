@@ -21,9 +21,16 @@ public final class SignDecisionPolicy {
         // Biển xa được giữ ở ngưỡng thấp hơn nhưng phải có đa số phiếu cùng lớp trên
         // cùng một track không gian, tránh hạ ngưỡng toàn cục rồi đọc nhầm quảng cáo.
         boolean temporalMajority = classVotes >= 3
-                && ratio >= .60f
-                && average >= .22f;
-        if (!strongPair && !temporalMajority) return Decision.REJECTED;
+                && ratio >= .66f
+                && average >= .20f;
+        // Ở khoảng cách xa model thường chỉ đạt 0,17–0,20. Chỉ chấp nhận ngưỡng này
+        // khi cùng một track có ít nhất bốn phiếu và chiếm đa số rõ ràng.
+        boolean distantMajority = classVotes >= 4
+                && ratio >= .66f
+                && average >= .17f;
+        if (!strongPair && !temporalMajority && !distantMajority) {
+            return Decision.REJECTED;
+        }
 
         float temporal = Math.min(1f, classVotes / 4f);
         float fused = clamp(average * .80f + temporal * .20f);

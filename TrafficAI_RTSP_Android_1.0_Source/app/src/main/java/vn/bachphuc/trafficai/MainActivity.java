@@ -1,6 +1,7 @@
 package vn.bachphuc.trafficai;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -8,6 +9,16 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.RectF;
+import android.graphics.SurfaceTexture;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -15,10 +26,13 @@ import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.util.Size;
+import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
@@ -63,6 +77,7 @@ import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -70,13 +85,12 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int LOCATION_PERMISSION_REQUEST = 1201;
     private static final int VOICE_SEARCH_REQUEST = 1202;
+    private static final int PHONE_CAMERA_PERMISSION_REQUEST = 1203;
     private static final long FRAME_INTERVAL_MS = 40L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
@@ -85,10 +99,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private static final double OFFLINE_MAP_RADIUS_KM = 25d;
     private static final long SEARCH_CACHE_MS = 30L * 24L * 60L * 60L * 1_000L;
     private static final String PROVIDER_PREFS = "map_provider_settings";
-    private static final Pattern SPEED_LIMIT_PATTERN = Pattern.compile(
-            "(?i)giới hạn tốc độ\\s+(\\d{1,3})");
-
     private PlayerView playerView;
+    private TextureView phoneCameraView;
     private DetectionOverlayView overlayView;
     private View settingsPanel;
     private EditText fullUrlInput;
@@ -100,6 +112,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private CheckBox tcpCheck;
     private TextView statusText;
     private TextView aiBadge;
+    private TextView cameraSourceBadge;
     private TextView lightResult;
     private TextView countdownResult;
     private TextView signResult;
@@ -112,6 +125,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private ProgressBar modelProgress;
     private Button initAiButton;
     private Button mapButton;
+    private Button phoneCameraButton;
     private Button downloadMapButton;
     private LinearLayout navigationPanel;
     private EditText destinationSearchInput;
@@ -129,9 +143,21 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private LanePreference lanePreference = LanePreference.CENTER;
 
     private ExoPlayer player;
+    private volatile CameraDevice phoneCameraDevice;
+    private volatile CameraCaptureSession phoneCameraSession;
+    private Surface phonePreviewSurface;
+    private HandlerThread phoneCameraThread;
+    private Handler phoneCameraHandler;
+    private Size phonePreviewSize;
+    private int phoneSensorOrientation = 90;
+    private boolean phoneCameraMode;
+    private boolean phoneCameraPaused;
+    private boolean phoneCameraOpening;
+    private final Object phoneCameraLock = new Object();
     private Bitmap captureBitmap;
     private ModelRepository modelRepository;
     private volatile AiCoordinator aiCoordinator;
+    private boolean aiInitializing;
     private TextToSpeech textToSpeech;
     private boolean ttsReady;
     private volatile boolean destroyed;
@@ -148,6 +174,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Integer lastSpokenCountdown;
     private long lastSignalSpeechAt;
     private long lastSignSpeechAt;
+    private long lastAppliedSpeedSignTrackId = -1L;
+    private String lastAppliedSpeedSignLabel = "";
     private long lastCountdownSpeechAt;
     private long overSpeedSince;
     private long lastOverSpeedSpeechAt;
@@ -193,6 +221,32 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private final LocationListener locationListener = this::applyLocation;
 
+    private final TextureView.SurfaceTextureListener phoneCameraTextureListener =
+            new TextureView.SurfaceTextureListener() {
+                @Override
+                public void onSurfaceTextureAvailable(
+                        SurfaceTexture surface, int width, int height) {
+                    configurePhoneCameraTransform(width, height);
+                    if (phoneCameraMode && !destroyed) openPhoneCamera();
+                }
+
+                @Override
+                public void onSurfaceTextureSizeChanged(
+                        SurfaceTexture surface, int width, int height) {
+                    configurePhoneCameraTransform(width, height);
+                }
+
+                @Override
+                public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+                    closePhoneCamera();
+                    return true;
+                }
+
+                @Override
+                public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+                }
+            };
+
     private final Runnable framePump = new Runnable() {
         @Override
         public void run() {
@@ -237,6 +291,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void bindViews() {
         playerView = findViewById(R.id.playerView);
+        phoneCameraView = findViewById(R.id.phoneCameraView);
+        phoneCameraView.setSurfaceTextureListener(phoneCameraTextureListener);
         overlayView = findViewById(R.id.overlayView);
         settingsPanel = findViewById(R.id.settingsPanel);
         fullUrlInput = findViewById(R.id.fullUrlInput);
@@ -248,6 +304,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         tcpCheck = findViewById(R.id.tcpCheck);
         statusText = findViewById(R.id.statusText);
         aiBadge = findViewById(R.id.aiBadge);
+        cameraSourceBadge = findViewById(R.id.cameraSourceBadge);
         lightResult = findViewById(R.id.lightResult);
         countdownResult = findViewById(R.id.countdownResult);
         signResult = findViewById(R.id.signResult);
@@ -260,6 +317,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         modelProgress = findViewById(R.id.modelProgress);
         initAiButton = findViewById(R.id.initAiButton);
         mapButton = findViewById(R.id.mapButton);
+        phoneCameraButton = findViewById(R.id.phoneCameraButton);
         downloadMapButton = findViewById(R.id.downloadMapButton);
         navigationPanel = findViewById(R.id.navigationPanel);
         destinationSearchInput = findViewById(R.id.destinationSearchInput);
@@ -297,6 +355,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         mainStream.setOnClickListener(view -> setImouSubtype(0));
         connect.setOnClickListener(view -> connectRtsp());
         disconnect.setOnClickListener(view -> disconnectRtsp());
+        phoneCameraButton.setOnClickListener(view -> switchToPhoneCamera());
         initAiButton.setOnClickListener(view -> initializeAi());
         mapButton.setOnClickListener(view -> toggleMap());
         downloadMapButton.setOnClickListener(view -> downloadOfflineMap());
@@ -607,7 +666,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.3 • "
+        String metadata = "{\"name\":\"TrafficAI 2.3.1 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -848,10 +907,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 if (state == Player.STATE_BUFFERING) {
                     setStatus("Đang kết nối/buffer RTSP…");
                 } else if (state == Player.STATE_READY) {
+                    if (phoneCameraMode) return;
+                    cameraSourceBadge.setText("CAMERA: RTSP • ẢNH TRỰC TIẾP");
                     CarTelemetryStore.updateConnection(true, aiCoordinator != null);
                     setStatus("RTSP đã kết nối • mic camera đã tắt • video đang chạy"
                             + (aiCoordinator == null ? " • AI chưa mở" : " • AI đang phân tích"));
                 } else if (state == Player.STATE_ENDED) {
+                    if (!phoneCameraMode) cameraSourceBadge.setText("CAMERA: RTSP ĐÃ DỪNG");
                     CarTelemetryStore.updateConnection(false, aiCoordinator != null);
                     setStatus("Luồng RTSP đã kết thúc");
                 }
@@ -859,6 +921,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
             @Override
             public void onPlayerError(PlaybackException error) {
+                if (!phoneCameraMode) cameraSourceBadge.setText("CAMERA: RTSP LỖI");
                 CarTelemetryStore.updateConnection(false, aiCoordinator != null);
                 setStatus("Lỗi RTSP: " + error.getErrorCodeName());
                 Toast.makeText(MainActivity.this,
@@ -868,8 +931,289 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         });
     }
 
+    private void switchToPhoneCamera() {
+        phoneCameraMode = true;
+        phoneCameraPaused = false;
+        if (mapVisible) toggleMap();
+        if (player != null) {
+            player.stop();
+            player.clearMediaItems();
+        }
+        if (aiCoordinator != null) aiCoordinator.reset();
+        resetUiResults();
+        updateCameraSurfaceVisibility();
+        cameraSourceBadge.setText("CAMERA: ĐIỆN THOẠI • ĐANG MỞ");
+        setSettingsVisible(false);
+        setStatus("Đang mở camera sau điện thoại • không thu âm mic");
+        if (checkSelfPermission(Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA},
+                    PHONE_CAMERA_PERMISSION_REQUEST);
+            return;
+        }
+        openPhoneCamera();
+        if (aiCoordinator == null) initializeAi();
+    }
+
+    private void startPhoneCameraThread() {
+        synchronized (phoneCameraLock) {
+            if (phoneCameraThread != null) return;
+            phoneCameraThread = new HandlerThread("TrafficAI-PhoneCamera");
+            phoneCameraThread.start();
+            phoneCameraHandler = new Handler(phoneCameraThread.getLooper());
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void openPhoneCamera() {
+        if (!phoneCameraMode || phoneCameraPaused || destroyed
+                || !phoneCameraView.isAvailable()) return;
+        if (checkSelfPermission(Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) return;
+        startPhoneCameraThread();
+        synchronized (phoneCameraLock) {
+            if (phoneCameraDevice != null || phoneCameraOpening) return;
+            phoneCameraOpening = true;
+        }
+        try {
+            CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
+            if (manager == null) throw new CameraAccessException(
+                    CameraAccessException.CAMERA_ERROR, "CameraManager unavailable");
+            String selectedId = null;
+            Size selectedSize = null;
+            int selectedOrientation = 90;
+            for (String cameraId : manager.getCameraIdList()) {
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                if (facing == null || facing != CameraCharacteristics.LENS_FACING_BACK) continue;
+                StreamConfigurationMap map = characteristics.get(
+                        CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                if (map == null) continue;
+                Size candidate = choosePhonePreviewSize(
+                        map.getOutputSizes(SurfaceTexture.class));
+                if (candidate == null) continue;
+                selectedId = cameraId;
+                selectedSize = candidate;
+                Integer orientation = characteristics.get(
+                        CameraCharacteristics.SENSOR_ORIENTATION);
+                if (orientation != null) selectedOrientation = orientation;
+                break;
+            }
+            if (selectedId == null || selectedSize == null) {
+                throw new IllegalStateException("Không tìm thấy camera sau phù hợp");
+            }
+            phonePreviewSize = selectedSize;
+            phoneSensorOrientation = selectedOrientation;
+            configurePhoneCameraTransform(phoneCameraView.getWidth(), phoneCameraView.getHeight());
+            manager.openCamera(selectedId, new CameraDevice.StateCallback() {
+                @Override
+                public void onOpened(CameraDevice camera) {
+                    synchronized (phoneCameraLock) {
+                        phoneCameraOpening = false;
+                        if (!phoneCameraMode || phoneCameraPaused || destroyed) {
+                            camera.close();
+                            return;
+                        }
+                        phoneCameraDevice = camera;
+                    }
+                    createPhoneCameraPreview(camera);
+                }
+
+                @Override
+                public void onDisconnected(CameraDevice camera) {
+                    camera.close();
+                    synchronized (phoneCameraLock) {
+                        phoneCameraOpening = false;
+                        if (phoneCameraDevice == camera) phoneCameraDevice = null;
+                    }
+                    runOnUiThread(() -> {
+                        CarTelemetryStore.updateConnection(false, aiCoordinator != null);
+                        setStatus("Camera điện thoại đã bị ngắt");
+                    });
+                }
+
+                @Override
+                public void onError(CameraDevice camera, int error) {
+                    camera.close();
+                    synchronized (phoneCameraLock) {
+                        phoneCameraOpening = false;
+                        if (phoneCameraDevice == camera) phoneCameraDevice = null;
+                    }
+                    runOnUiThread(() -> {
+                        CarTelemetryStore.updateConnection(false, aiCoordinator != null);
+                        cameraSourceBadge.setText("CAMERA: LỖI " + error);
+                        setStatus("Không mở được camera sau điện thoại • mã lỗi " + error);
+                    });
+                }
+            }, phoneCameraHandler);
+        } catch (Throwable error) {
+            synchronized (phoneCameraLock) {
+                phoneCameraOpening = false;
+            }
+            cameraSourceBadge.setText("CAMERA: LỖI");
+            setStatus("Không mở được camera điện thoại: " + safeMessage(error));
+        }
+    }
+
+    private void createPhoneCameraPreview(CameraDevice camera) {
+        try {
+            SurfaceTexture texture = phoneCameraView.getSurfaceTexture();
+            Size size = phonePreviewSize;
+            if (texture == null || size == null) {
+                camera.close();
+                return;
+            }
+            texture.setDefaultBufferSize(size.getWidth(), size.getHeight());
+            Surface surface = new Surface(texture);
+            CaptureRequest.Builder request = camera.createCaptureRequest(
+                    CameraDevice.TEMPLATE_PREVIEW);
+            request.addTarget(surface);
+            request.set(CaptureRequest.CONTROL_AF_MODE,
+                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
+            request.set(CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON);
+            synchronized (phoneCameraLock) {
+                if (phonePreviewSurface != null) phonePreviewSurface.release();
+                phonePreviewSurface = surface;
+            }
+            camera.createCaptureSession(Collections.singletonList(surface),
+                    new CameraCaptureSession.StateCallback() {
+                        @Override
+                        public void onConfigured(CameraCaptureSession session) {
+                            synchronized (phoneCameraLock) {
+                                if (phoneCameraDevice != camera || !phoneCameraMode
+                                        || phoneCameraPaused || destroyed) {
+                                    session.close();
+                                    return;
+                                }
+                                phoneCameraSession = session;
+                            }
+                            try {
+                                session.setRepeatingRequest(
+                                        request.build(), null, phoneCameraHandler);
+                                runOnUiThread(() -> {
+                                    cameraSourceBadge.setText("CAMERA: ĐIỆN THOẠI • ẢNH TRỰC TIẾP");
+                                    CarTelemetryStore.updateConnection(true, aiCoordinator != null);
+                                    setStatus("Camera sau đã mở • mic không được thu • AI quét biển nhạy cao");
+                                });
+                            } catch (CameraAccessException error) {
+                                runOnUiThread(() -> setStatus(
+                                        "Lỗi chạy camera điện thoại: " + safeMessage(error)));
+                            }
+                        }
+
+                        @Override
+                        public void onConfigureFailed(CameraCaptureSession session) {
+                            session.close();
+                            runOnUiThread(() -> setStatus(
+                                    "Camera điện thoại không tạo được luồng xem trước"));
+                        }
+                    }, phoneCameraHandler);
+        } catch (Throwable error) {
+            runOnUiThread(() -> setStatus(
+                    "Không tạo được hình camera điện thoại: " + safeMessage(error)));
+        }
+    }
+
+    private Size choosePhonePreviewSize(Size[] choices) {
+        if (choices == null || choices.length == 0) return null;
+        Size best = choices[0];
+        long bestScore = Long.MAX_VALUE;
+        final long targetPixels = (long) CAPTURE_WIDTH * CAPTURE_HEIGHT;
+        for (Size size : choices) {
+            long pixels = (long) size.getWidth() * size.getHeight();
+            if (size.getWidth() > 1_920 || size.getHeight() > 1_920) continue;
+            float ratio = Math.max(size.getWidth(), size.getHeight())
+                    / (float) Math.max(1, Math.min(size.getWidth(), size.getHeight()));
+            long ratioPenalty = Math.round(Math.abs(ratio - (16f / 9f)) * 2_000_000L);
+            long score = Math.abs(pixels - targetPixels) + ratioPenalty;
+            if (score < bestScore) {
+                best = size;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private void configurePhoneCameraTransform(int viewWidth, int viewHeight) {
+        Size size = phonePreviewSize;
+        if (phoneCameraView == null || size == null || viewWidth <= 0 || viewHeight <= 0) return;
+        int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
+        int displayDegrees = displayRotation == Surface.ROTATION_90 ? 90
+                : displayRotation == Surface.ROTATION_180 ? 180
+                : displayRotation == Surface.ROTATION_270 ? 270 : 0;
+        int relativeRotation = (phoneSensorOrientation - displayDegrees + 360) % 360;
+        Matrix matrix = new Matrix();
+        RectF viewRect = new RectF(0f, 0f, viewWidth, viewHeight);
+        float centerX = viewRect.centerX();
+        float centerY = viewRect.centerY();
+        if (relativeRotation == 90 || relativeRotation == 270) {
+            RectF bufferRect = new RectF(0f, 0f, size.getHeight(), size.getWidth());
+            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
+            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
+            float scale = Math.max(viewHeight / (float) size.getHeight(),
+                    viewWidth / (float) size.getWidth());
+            matrix.postScale(scale, scale, centerX, centerY);
+            matrix.postRotate(relativeRotation == 90 ? 90f : -90f, centerX, centerY);
+        } else if (relativeRotation == 180) {
+            matrix.postRotate(180f, centerX, centerY);
+        }
+        phoneCameraView.setTransform(matrix);
+    }
+
+    private void closePhoneCamera() {
+        CameraCaptureSession session;
+        CameraDevice camera;
+        Surface surface;
+        synchronized (phoneCameraLock) {
+            session = phoneCameraSession;
+            camera = phoneCameraDevice;
+            surface = phonePreviewSurface;
+            phoneCameraSession = null;
+            phoneCameraDevice = null;
+            phonePreviewSurface = null;
+            phoneCameraOpening = false;
+        }
+        if (session != null) session.close();
+        if (camera != null) camera.close();
+        if (surface != null) surface.release();
+    }
+
+    private void stopPhoneCameraThread() {
+        HandlerThread thread;
+        synchronized (phoneCameraLock) {
+            thread = phoneCameraThread;
+            phoneCameraThread = null;
+            phoneCameraHandler = null;
+        }
+        if (thread == null) return;
+        thread.quitSafely();
+        try {
+            thread.join(800L);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void updateCameraSurfaceVisibility() {
+        boolean showCamera = !mapVisible;
+        // Khi xem bản đồ, giữ nguồn đang dùng ở INVISIBLE để SurfaceTexture tiếp tục nhận
+        // khung hình và cảnh báo giọng nói không bị dừng.
+        playerView.setVisibility(!phoneCameraMode
+                ? showCamera ? View.VISIBLE : View.INVISIBLE
+                : View.GONE);
+        phoneCameraView.setVisibility(phoneCameraMode
+                ? showCamera ? View.VISIBLE : View.INVISIBLE
+                : View.GONE);
+    }
+
     private void connectRtsp() {
         try {
+            phoneCameraMode = false;
+            phoneCameraPaused = false;
+            closePhoneCamera();
+            updateCameraSurfaceVisibility();
+            cameraSourceBadge.setText("CAMERA: RTSP • ĐANG KẾT NỐI");
             String url = RtspUrlBuilder.build(
                     text(fullUrlInput),
                     text(hostInput),
@@ -901,8 +1245,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void disconnectRtsp() {
+        phoneCameraMode = false;
+        phoneCameraPaused = false;
+        closePhoneCamera();
         player.stop();
         player.clearMediaItems();
+        updateCameraSurfaceVisibility();
+        cameraSourceBadge.setText("CAMERA: ĐÃ TẮT");
         CarTelemetryStore.updateConnection(false, aiCoordinator != null);
         if (aiCoordinator != null) aiCoordinator.reset();
         resetUiResults();
@@ -914,6 +1263,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             setStatus("AI đã sẵn sàng");
             return;
         }
+        if (aiInitializing) {
+            setStatus("AI đang được khởi tạo, vui lòng chờ");
+            return;
+        }
+        aiInitializing = true;
         initAiButton.setEnabled(false);
         aiBadge.setText("AI: ĐANG KHỞI TẠO");
         worker.execute(() -> {
@@ -939,20 +1293,23 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         return;
                     }
                     aiCoordinator = ready;
+                    aiInitializing = false;
                     ready.setLandmarkHint(currentLandmarkHint);
                     ready.setLanePreference(lanePreference);
-                    boolean cameraReady = player != null
-                            && player.getPlaybackState() == Player.STATE_READY;
+                    boolean cameraReady = phoneCameraMode
+                            ? phoneCameraDevice != null
+                            : player != null && player.getPlaybackState() == Player.STATE_READY;
                     CarTelemetryStore.updateConnection(cameraReady, true);
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.3: AI sẵn sàng • ưu tiên làn "
+                    setStatus("TrafficAI 2.3.1: AI nhạy cao sẵn sàng • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
                 runOnUiThread(() -> {
                     if (destroyed) return;
+                    aiInitializing = false;
                     aiBadge.setText("AI: LỖI");
                     initAiButton.setEnabled(true);
                     setStatus("Lỗi khởi tạo AI: " + safeMessage(error));
@@ -962,18 +1319,23 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void captureAndAnalyze() {
-        if (aiCoordinator == null || player == null || player.getPlaybackState() != Player.STATE_READY) return;
-        if (!frameBusy.compareAndSet(false, true)) return;
-        View surface = playerView.getVideoSurfaceView();
-        if (!(surface instanceof TextureView) || !((TextureView) surface).isAvailable()) {
-            frameBusy.set(false);
-            return;
+        if (aiCoordinator == null) return;
+        TextureView source;
+        if (phoneCameraMode) {
+            if (phoneCameraSession == null || !phoneCameraView.isAvailable()) return;
+            source = phoneCameraView;
+        } else {
+            if (player == null || player.getPlaybackState() != Player.STATE_READY) return;
+            View surface = playerView.getVideoSurfaceView();
+            if (!(surface instanceof TextureView) || !((TextureView) surface).isAvailable()) return;
+            source = (TextureView) surface;
         }
+        if (!frameBusy.compareAndSet(false, true)) return;
         if (captureBitmap == null || captureBitmap.isRecycled()) {
             captureBitmap = Bitmap.createBitmap(
                     CAPTURE_WIDTH, CAPTURE_HEIGHT, Bitmap.Config.ARGB_8888);
         }
-        Bitmap frame = ((TextureView) surface).getBitmap(captureBitmap);
+        Bitmap frame = source.getBitmap(captureBitmap);
         if (frame == null) {
             frameBusy.set(false);
             return;
@@ -1006,7 +1368,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.3 • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.3.1 • NHẠY CAO • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -1083,7 +1445,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (!result.signText.isEmpty()
                 && ((newSignTrack && now - lastSignSpeechAt > 1_200L)
                 || correctedSign || repeatedSign)) {
-            speak("Biển báo, " + result.signText, TextToSpeech.QUEUE_FLUSH);
+            SpeedSignPolicy.Parsed speedSign = SpeedSignPolicy.parse(result.signText);
+            String announcement = speedSign == null
+                    ? "Biển báo, " + result.signText
+                    : speedSign.endsLimit
+                    ? "Biển báo, hết giới hạn tốc độ"
+                    : "Biển báo, giới hạn tốc độ " + speedSign.limitKmh
+                    + " ki lô mét một giờ";
+            speak(announcement, TextToSpeech.QUEUE_FLUSH);
             lastSpokenSign = result.signText;
             lastSpokenSignTrackId = result.signTrackId;
             lastSignSpeechAt = now;
@@ -1099,9 +1468,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         mapVisible = !mapVisible;
         baseMapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
-        playerView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        updateCameraSurfaceVisibility();
         overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        cameraSourceBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         mapButton.setText(mapVisible ? "CAMERA" : "MAP");
         if (mapVisible && lastLocation != null) {
             lastMapCameraAt = 0L;
@@ -1128,7 +1498,18 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST && hasAnyLocationPermission()) {
+        if (requestCode == PHONE_CAMERA_PERMISSION_REQUEST) {
+            if (checkSelfPermission(Manifest.permission.CAMERA)
+                    == PackageManager.PERMISSION_GRANTED) {
+                openPhoneCamera();
+                if (aiCoordinator == null) initializeAi();
+            } else {
+                phoneCameraMode = false;
+                updateCameraSurfaceVisibility();
+                cameraSourceBadge.setText("CAMERA: CHƯA CẤP QUYỀN");
+                setStatus("Cần cấp quyền Camera để dùng camera sau điện thoại");
+            }
+        } else if (requestCode == LOCATION_PERMISSION_REQUEST && hasAnyLocationPermission()) {
             startGps();
         } else if (requestCode == LOCATION_PERMISSION_REQUEST) {
             speedResult.setText("GPS\nTẮT");
@@ -1400,16 +1781,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void updateLimitFromMapHint(LandmarkHint hint) {
         if (hint == null || !hint.expectsSign() || hint.distanceMeters > 120d) return;
-        Matcher matcher = SPEED_LIMIT_PATTERN.matcher(hint.label);
-        if (!matcher.find()) return;
-        try {
-            int detected = Integer.parseInt(matcher.group(1));
-            if (detected >= 10 && detected <= 130 && detected != speedLimitKmh) {
-                setSpeedLimit(detected, "Dữ liệu OSM gần xe");
-                if (ttsReady) speak("Giới hạn tốc độ sắp tới " + detected,
-                        TextToSpeech.QUEUE_ADD);
-            }
-        } catch (NumberFormatException ignored) {
+        SpeedSignPolicy.Parsed parsed = SpeedSignPolicy.parse(hint.label);
+        if (parsed == null || parsed.endsLimit) return;
+        if (parsed.limitKmh != speedLimitKmh) {
+            setSpeedLimit(parsed.limitKmh, "Dữ liệu OSM gần xe");
+            if (ttsReady) speak("Giới hạn tốc độ sắp tới " + parsed.limitKmh,
+                    TextToSpeech.QUEUE_ADD);
         }
     }
 
@@ -1453,30 +1830,34 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void updateLimitFromSign(AiResult result) {
-        if (result == null || result.signConfidence < 0.50f || result.signText == null) return;
-        String text = result.signText.trim();
-        if (text.toLowerCase(new Locale("vi", "VN")).startsWith("hết giới hạn tốc độ")) {
-            setSpeedLimit(0, "Biển hết hạn chế");
+        if (result == null || result.signText == null || result.signTrackId <= 0L
+                || result.signConfidence < .33f) return;
+        String label = result.signText.trim();
+        SpeedSignPolicy.Parsed parsed = SpeedSignPolicy.parse(label);
+        if (parsed == null) return;
+        if (result.signTrackId == lastAppliedSpeedSignTrackId
+                && label.equals(lastAppliedSpeedSignLabel)) return;
+        lastAppliedSpeedSignTrackId = result.signTrackId;
+        lastAppliedSpeedSignLabel = label;
+        int confidence = Math.round(result.signConfidence * 100f);
+        if (parsed.endsLimit) {
+            if (speedLimitKmh > 0) {
+                setSpeedLimit(0, "Biển AI hết hạn chế " + confidence + "%");
+                roadAlertBanner.setText("HẾT GIỚI HẠN TỐC ĐỘ • BIỂN AI " + confidence + "%");
+            }
             return;
         }
-        Matcher matcher = SPEED_LIMIT_PATTERN.matcher(text);
-        if (!matcher.find()) return;
-        int detected;
-        try {
-            detected = Integer.parseInt(matcher.group(1));
-        } catch (NumberFormatException error) {
-            return;
-        }
-        if (detected >= 10 && detected <= 130 && detected != speedLimitKmh) {
-            setSpeedLimit(detected, "Biển báo AI");
-            speak("Đã nhận giới hạn tốc độ " + detected, TextToSpeech.QUEUE_ADD);
-        }
+        setSpeedLimit(parsed.limitKmh, "Biển báo AI " + confidence + "%");
+        roadAlertBanner.setText("GIỚI HẠN " + parsed.limitKmh
+                + " • BIỂN AI " + confidence + "%");
     }
 
     private void setSpeedLimit(int value, String source) {
         speedLimitKmh = Math.max(0, value);
+        String sourceTag = source != null && source.contains("AI") ? "AI"
+                : source != null && source.contains("OSM") ? "MAP" : "TAY";
         speedLimitResult.setText(speedLimitKmh > 0
-                ? speedLimitKmh + "\nMAX"
+                ? speedLimitKmh + "\n" + sourceTag
                 : "MAX\n—");
         CarTelemetryStore.updateLimit(speedLimitKmh, source);
         overSpeedSince = 0L;
@@ -1484,14 +1865,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void evaluateOverSpeed() {
         long now = SystemClock.elapsedRealtime();
-        if (speedLimitKmh <= 0 || currentSpeedKmh <= speedLimitKmh + 5) {
+        if (speedLimitKmh <= 0 || currentSpeedKmh <= speedLimitKmh + 3) {
             overSpeedSince = 0L;
             speedResult.setTextColor(Color.WHITE);
             return;
         }
         speedResult.setTextColor(Color.rgb(255, 102, 92));
         if (overSpeedSince == 0L) overSpeedSince = now;
-        if (now - overSpeedSince >= 1_800L && now - lastOverSpeedSpeechAt >= 12_000L) {
+        if (now - overSpeedSince >= 1_200L && now - lastOverSpeedSpeechAt >= 10_000L) {
             speak("Bạn đang chạy " + currentSpeedKmh + ", giới hạn "
                     + speedLimitKmh + ", hãy giảm tốc độ", TextToSpeech.QUEUE_FLUSH);
             lastOverSpeedSpeechAt = now;
@@ -1508,6 +1889,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lastSpokenSignal = "";
         lastSpokenSign = "";
         lastSpokenSignTrackId = -1L;
+        lastAppliedSpeedSignTrackId = -1L;
+        lastAppliedSpeedSignLabel = "";
         lastSpokenCountdown = null;
         lastCountdownSpeechAt = 0;
         lastSpokenHazard = "";
@@ -1596,12 +1979,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     protected void onResume() {
         super.onResume();
         if (baseMapView != null) baseMapView.onResume();
+        phoneCameraPaused = false;
+        if (phoneCameraMode) openPhoneCamera();
         if (!destroyed) startFramePump();
     }
 
     @Override
     protected void onPause() {
         stopFramePump();
+        phoneCameraPaused = true;
+        closePhoneCamera();
         saveProviderSettings();
         if (baseMapView != null) baseMapView.onPause();
         super.onPause();
@@ -1630,6 +2017,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         destroyed = true;
         stopFramePump();
         frameBusy.set(false);
+        phoneCameraMode = false;
+        phoneCameraPaused = true;
+        closePhoneCamera();
+        stopPhoneCameraThread();
         networkWorker.shutdownNow();
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);

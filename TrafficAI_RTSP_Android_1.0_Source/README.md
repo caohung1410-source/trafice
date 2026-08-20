@@ -1,6 +1,16 @@
-# TrafficAI Drive 2.3 • Driver UI ARM64
+# TrafficAI Drive 2.3.1 • Phone Camera + High Sensitivity ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.3.1: camera điện thoại và cảnh báo tốc độ theo biển AI
+
+- Có nút **DÙNG CAMERA SAU ĐIỆN THOẠI** trong Cài đặt; app mở Camera2 trực tiếp, không yêu cầu camera RTSP và không mở luồng mic.
+- Camera điện thoại tự mở AI, hiển thị rõ nguồn đang dùng và vẫn có thể chuyển lại IMOU/RTSP; khi mở bản đồ, luồng hình được giữ ẩn để cảnh báo AI tiếp tục chạy.
+- Hạ ngưỡng ứng viên biển từ 0,16 xuống 0,13 (vùng đã học 0,11), nhưng biển yếu chỉ được đọc khi cùng một vị trí có đa số 3–4 khung để hạn chế báo nhầm.
+- Biển giới hạn tốc độ đã xác nhận sẽ cập nhật vòng tròn `AI`, đọc giới hạn bằng tiếng Việt và cảnh báo khi GPS vượt quá biển hơn 3 km/h trong ít nhất 1,2 giây.
+- Nguồn giới hạn được ghi rõ `AI`, `MAP` hoặc `TAY`; biển “Hết giới hạn tốc độ” xóa giới hạn AI cũ.
+
+Đây vẫn là trợ lý thử nghiệm. Nhận diện biển, tốc độ GPS và cảnh báo có thể sai hoặc trễ; người lái phải tuân theo biển và tín hiệu thực tế.
 
 ## Bản 2.3: giao diện trợ lý lái xe
 
@@ -69,7 +79,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.3 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.3.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 
@@ -140,11 +150,9 @@ Chiều cao thực không thể đổi chính xác thành tọa độ pixel nế
 5. Bấm **TẢI / MỞ AI**. Model đã được workflow đóng gói trong APK và được chép vào vùng riêng trong lần mở đầu.
 6. Khi RTSP đã phát và AI báo đủ ba lõi `OK`, kết quả đèn, số giây và biển báo sẽ hiện bên dưới video và được đọc bằng tiếng Việt.
 
-URL đã kiểm chứng về cấu trúc:
-
-```text
-rtsp://admin:MATKHAU@IP:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif
-```
+Cấu trúc đã kiểm chứng gồm: giao thức RTSP, tên người dùng, Safety Code/mật khẩu,
+địa chỉ IP camera, cổng `554` và đường dẫn IMOU đang hiển thị trong ứng dụng.
+Không ghi URL có thông tin đăng nhập hoàn chỉnh vào tài liệu, ảnh chụp hoặc GitHub.
 
 Nếu luồng chính chậm, đổi `subtype=0` thành `subtype=1`.
 

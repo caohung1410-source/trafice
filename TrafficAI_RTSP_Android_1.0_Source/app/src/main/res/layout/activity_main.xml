@@ -34,7 +34,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="TrafficAI Drive 2.3"
+                    android:text="TrafficAI Drive 2.3.1"
                     android:textColor="#FFFFFF"
                     android:textSize="20sp"
                     android:textStyle="bold" />
@@ -275,6 +275,12 @@
                 app:surface_type="texture_view"
                 app:use_controller="false" />
 
+            <TextureView
+                android:id="@+id/phoneCameraView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
             <vn.bachphuc.trafficai.DetectionOverlayView
                 android:id="@+id/overlayView"
                 android:layout_width="match_parent"
@@ -290,6 +296,19 @@
                 android:padding="6dp"
                 android:text="AI: CHƯA MỞ"
                 android:textColor="#FFFFFF"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/cameraSourceBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="8dp"
+                android:background="#C10A1522"
+                android:padding="6dp"
+                android:text="CAMERA: CHƯA CHỌN"
+                android:textColor="#BFE9FF"
                 android:textSize="9sp"
                 android:textStyle="bold" />
 
@@ -427,7 +446,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="CÀI ĐẶT TRAFFICAI 2.3"
+                    android:text="CÀI ĐẶT TRAFFICAI 2.3.1"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -457,7 +476,27 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:paddingBottom="5dp"
-                        android:text="CAMERA RTSP • IMOU C22E-A"
+                        android:text="NGUỒN CAMERA"
+                        android:textColor="#66C7FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/phoneCameraButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:background="@drawable/lane_button"
+                        android:text="DÙNG CAMERA SAU ĐIỆN THOẠI • TỰ MỞ AI"
+                        android:textColor="#FFFFFF"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:paddingTop="12dp"
+                        android:text="CAMERA RTSP • IMOU C22E-A / H.264"
                         android:textColor="#66C7FF"
                         android:textSize="12sp"
                         android:textStyle="bold" />

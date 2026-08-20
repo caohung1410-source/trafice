@@ -17,7 +17,7 @@ public final class SignConsensusTracker {
     private static final long WINDOW_MS = 5_000L;
     private static final long TRACK_LOST_MS = 5_400L;
     private static final long STABLE_LOST_MS = 4_200L;
-    private static final float MIN_SAMPLE_CONFIDENCE = .16f;
+    private static final float MIN_SAMPLE_CONFIDENCE = .13f;
     private static final float MATCH_THRESHOLD = .20f;
 
     private final List<Track> tracks = new ArrayList<>();

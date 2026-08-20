@@ -34,7 +34,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="TrafficAI Drive 2.3.1"
+                    android:text="TrafficAI Drive 2.3.2"
                     android:textColor="#FFFFFF"
                     android:textSize="20sp"
                     android:textStyle="bold" />
@@ -446,7 +446,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="CÀI ĐẶT TRAFFICAI 2.3.1"
+                    android:text="CÀI ĐẶT TRAFFICAI 2.3.2"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -489,6 +489,17 @@
                         android:text="DÙNG CAMERA SAU ĐIỆN THOẠI • TỰ MỞ AI"
                         android:textColor="#FFFFFF"
                         android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/rotatePhoneCameraButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="42dp"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/icon_button"
+                        android:text="XOAY CAMERA 90° NẾU ẢNH CHƯA ĐÚNG"
+                        android:textColor="#BFE9FF"
+                        android:textSize="10sp"
                         android:textStyle="bold" />
 
                     <TextView

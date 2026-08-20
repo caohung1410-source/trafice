@@ -1,3 +1,4 @@
+import vn.bachphuc.trafficai.CameraRotationPolicy;
 import vn.bachphuc.trafficai.CountdownTracker;
 import vn.bachphuc.trafficai.GeoMath;
 import vn.bachphuc.trafficai.LanePreference;
@@ -22,6 +23,26 @@ public final class PureLogicSelfTest {
                 "Mật khẩu giữ chỗ phải được URI-encode");
         require(!RtspUrlBuilder.redact(url).contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
                 "Log không được lộ mật khẩu giữ chỗ");
+
+        require(CameraRotationPolicy.previewRotationDegrees(0) == 0f,
+                "Màn hình dọc không được tự xoay thêm 90 độ");
+        require(CameraRotationPolicy.previewRotationDegrees(1) == -90f,
+                "Landscape 90 phải bù preview theo chiều âm");
+        require(CameraRotationPolicy.previewRotationDegrees(2) == 180f,
+                "Màn hình lộn ngược phải bù 180 độ");
+        require(CameraRotationPolicy.previewRotationDegrees(3) == 90f,
+                "Landscape 270 phải bù preview theo chiều dương");
+        require(CameraRotationPolicy.swapsBufferDimensions(1)
+                        && !CameraRotationPolicy.swapsBufferDimensions(0),
+                "Chỉ landscape mới đổi chiều rộng/cao của buffer");
+        require(CameraRotationPolicy.isQuarterTurnDegrees(-90)
+                        && !CameraRotationPolicy.isQuarterTurnDegrees(180),
+                "Tổng góc 90/270 mới được đổi chiều buffer");
+        require(CameraRotationPolicy.normalizeDegrees(-90) == 270,
+                "Góc âm phải chuẩn hóa đúng để ghép xoay tự động và thủ công");
+        require(CameraRotationPolicy.normalizeManualDegrees(450) == 90
+                        && CameraRotationPolicy.normalizeManualDegrees(-90) == 270,
+                "Bù xoay thủ công phải luôn nằm trong 0/90/180/270");
 
         CountdownTracker tracker = new CountdownTracker();
         long t = 1_000;

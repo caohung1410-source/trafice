@@ -21,7 +21,7 @@ import java.util.Set;
 /** Client nhỏ cho Nominatim, Overpass và OSRM; mọi lời gọi phải chạy ngoài main thread. */
 public final class NavigationDataService {
     private static final String USER_AGENT =
-            "TrafficAI-RTSP/2.3.1 (personal navigation; github.com/caohung1410-source/trafice)";
+            "TrafficAI-RTSP/2.3.2 (personal navigation; github.com/caohung1410-source/trafice)";
     private static final int MAX_RESPONSE_CHARS = 5_000_000;
     private static final int OVERPASS_CONNECT_TIMEOUT_MS = 10_000;
     private static final int OVERPASS_READ_TIMEOUT_MS = 28_000;

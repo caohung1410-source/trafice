@@ -6,6 +6,7 @@ test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
 sources=(
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraRotationPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficState.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RtspUrlBuilder.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CountdownTracker.java"

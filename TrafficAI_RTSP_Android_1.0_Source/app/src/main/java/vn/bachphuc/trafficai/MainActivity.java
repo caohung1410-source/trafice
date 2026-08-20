@@ -126,6 +126,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Button initAiButton;
     private Button mapButton;
     private Button phoneCameraButton;
+    private Button rotatePhoneCameraButton;
     private Button downloadMapButton;
     private LinearLayout navigationPanel;
     private EditText destinationSearchInput;
@@ -149,7 +150,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private HandlerThread phoneCameraThread;
     private Handler phoneCameraHandler;
     private Size phonePreviewSize;
-    private int phoneSensorOrientation = 90;
+    private int manualCameraRotationDegrees;
     private boolean phoneCameraMode;
     private boolean phoneCameraPaused;
     private boolean phoneCameraOpening;
@@ -318,6 +319,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         initAiButton = findViewById(R.id.initAiButton);
         mapButton = findViewById(R.id.mapButton);
         phoneCameraButton = findViewById(R.id.phoneCameraButton);
+        rotatePhoneCameraButton = findViewById(R.id.rotatePhoneCameraButton);
         downloadMapButton = findViewById(R.id.downloadMapButton);
         navigationPanel = findViewById(R.id.navigationPanel);
         destinationSearchInput = findViewById(R.id.destinationSearchInput);
@@ -356,6 +358,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         connect.setOnClickListener(view -> connectRtsp());
         disconnect.setOnClickListener(view -> disconnectRtsp());
         phoneCameraButton.setOnClickListener(view -> switchToPhoneCamera());
+        rotatePhoneCameraButton.setOnClickListener(view -> rotatePhoneCameraPreview());
         initAiButton.setOnClickListener(view -> initializeAi());
         mapButton.setOnClickListener(view -> toggleMap());
         downloadMapButton.setOnClickListener(view -> downloadOfflineMap());
@@ -389,6 +392,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void restoreProviderSettings() {
         SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
+        manualCameraRotationDegrees = CameraRotationPolicy.normalizeManualDegrees(
+                preferences.getInt("phone_camera_rotation", 0));
+        updatePhoneCameraRotationButton();
         geocoderUrlInput.setText(preferences.getString(
                 "geocoder", "https://nominatim.openstreetmap.org"));
         routingUrlInput.setText(preferences.getString(
@@ -666,7 +672,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.3.1 • "
+        String metadata = "{\"name\":\"TrafficAI 2.3.2 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -955,6 +961,28 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (aiCoordinator == null) initializeAi();
     }
 
+    private void rotatePhoneCameraPreview() {
+        manualCameraRotationDegrees = CameraRotationPolicy.normalizeManualDegrees(
+                manualCameraRotationDegrees + 90);
+        getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
+                .putInt("phone_camera_rotation", manualCameraRotationDegrees)
+                .apply();
+        updatePhoneCameraRotationButton();
+        configurePhoneCameraTransform(phoneCameraView.getWidth(), phoneCameraView.getHeight());
+        cameraSourceBadge.setText("CAMERA: ĐIỆN THOẠI • BÙ XOAY "
+                + manualCameraRotationDegrees + "°");
+        Toast.makeText(this,
+                "Đã bù xoay camera " + manualCameraRotationDegrees + " độ",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void updatePhoneCameraRotationButton() {
+        if (rotatePhoneCameraButton == null) return;
+        rotatePhoneCameraButton.setText(manualCameraRotationDegrees == 0
+                ? "XOAY CAMERA 90° NẾU ẢNH CHƯA ĐÚNG"
+                : "BÙ XOAY: " + manualCameraRotationDegrees + "° • BẤM ĐỂ XOAY TIẾP");
+    }
+
     private void startPhoneCameraThread() {
         synchronized (phoneCameraLock) {
             if (phoneCameraThread != null) return;
@@ -981,7 +1009,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     CameraAccessException.CAMERA_ERROR, "CameraManager unavailable");
             String selectedId = null;
             Size selectedSize = null;
-            int selectedOrientation = 90;
             for (String cameraId : manager.getCameraIdList()) {
                 CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
                 Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
@@ -994,16 +1021,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 if (candidate == null) continue;
                 selectedId = cameraId;
                 selectedSize = candidate;
-                Integer orientation = characteristics.get(
-                        CameraCharacteristics.SENSOR_ORIENTATION);
-                if (orientation != null) selectedOrientation = orientation;
                 break;
             }
             if (selectedId == null || selectedSize == null) {
                 throw new IllegalStateException("Không tìm thấy camera sau phù hợp");
             }
             phonePreviewSize = selectedSize;
-            phoneSensorOrientation = selectedOrientation;
             configurePhoneCameraTransform(phoneCameraView.getWidth(), phoneCameraView.getHeight());
             manager.openCamera(selectedId, new CameraDevice.StateCallback() {
                 @Override
@@ -1139,24 +1162,23 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         Size size = phonePreviewSize;
         if (phoneCameraView == null || size == null || viewWidth <= 0 || viewHeight <= 0) return;
         int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
-        int displayDegrees = displayRotation == Surface.ROTATION_90 ? 90
-                : displayRotation == Surface.ROTATION_180 ? 180
-                : displayRotation == Surface.ROTATION_270 ? 270 : 0;
-        int relativeRotation = (phoneSensorOrientation - displayDegrees + 360) % 360;
         Matrix matrix = new Matrix();
         RectF viewRect = new RectF(0f, 0f, viewWidth, viewHeight);
         float centerX = viewRect.centerX();
         float centerY = viewRect.centerY();
-        if (relativeRotation == 90 || relativeRotation == 270) {
+        int totalRotation = CameraRotationPolicy.normalizeDegrees(
+                Math.round(CameraRotationPolicy.previewRotationDegrees(displayRotation))
+                        + manualCameraRotationDegrees);
+        if (CameraRotationPolicy.isQuarterTurnDegrees(totalRotation)) {
             RectF bufferRect = new RectF(0f, 0f, size.getHeight(), size.getWidth());
             bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
             matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
             float scale = Math.max(viewHeight / (float) size.getHeight(),
                     viewWidth / (float) size.getWidth());
             matrix.postScale(scale, scale, centerX, centerY);
-            matrix.postRotate(relativeRotation == 90 ? 90f : -90f, centerX, centerY);
-        } else if (relativeRotation == 180) {
-            matrix.postRotate(180f, centerX, centerY);
+        }
+        if (totalRotation != 0) {
+            matrix.postRotate(totalRotation, centerX, centerY);
         }
         phoneCameraView.setTransform(matrix);
     }
@@ -1303,7 +1325,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.3.1: AI nhạy cao sẵn sàng • ưu tiên làn "
+                    setStatus("TrafficAI 2.3.2: camera đúng chiều • AI nhạy cao • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1368,7 +1390,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.3.1 • NHẠY CAO • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.3.2 • NHẠY CAO • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));

@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.3.1: tracker từng biển, bộ nhớ tọa độ và ưu tiên làn xe. */
+/** Điều phối thị giác 2.3.2: tracker từng biển, bộ nhớ tọa độ và ưu tiên làn xe. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;

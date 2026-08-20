@@ -10,8 +10,8 @@ android {
         applicationId 'vn.bachphuc.trafficai'
         minSdk 26
         targetSdk 36
-        versionCode 231
-        versionName '2.3.1-phone-camera-high-sensitivity-arm64'
+        versionCode 232
+        versionName '2.3.2-camera-orientation-fix-arm64'
 
         // Bản cài trực tiếp cho Samsung S23 Ultra và điện thoại Android 64-bit hiện đại.
         // Loại các thư viện native x86/32-bit không dùng tới để APK nhỏ và tải ổn định hơn.

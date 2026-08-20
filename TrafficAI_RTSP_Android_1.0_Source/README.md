@@ -1,6 +1,13 @@
-# TrafficAI Drive 2.3.1 • Phone Camera + High Sensitivity ARM64
+# TrafficAI Drive 2.3.2 • Camera Orientation Fix ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.3.2: sửa chiều camera điện thoại
+
+- Bỏ phép xoay thừa 90° khi S23 Ultra đang ở màn hình dọc.
+- Tự bù đúng −90° hoặc +90° theo `Surface.ROTATION_90/270` khi điện thoại xoay ngang và bù 180° khi gắn lộn ngược.
+- Thêm nút **XOAY CAMERA 90° NẾU ẢNH CHƯA ĐÚNG** trong Cài đặt; góc bù 0/90/180/270 được lưu trên điện thoại.
+- Khung hình AI được lấy sau ma trận hiển thị nên hộp nhận diện tiếp tục trùng với hình camera đã xoay.
 
 ## Bản 2.3.1: camera điện thoại và cảnh báo tốc độ theo biển AI
 
@@ -79,7 +86,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.3.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.3.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

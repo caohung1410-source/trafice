@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.3.2: tracker từng biển, bộ nhớ tọa độ và ưu tiên làn xe. */
+/** Điều phối thị giác 2.4: fusion nhiều khung, phóng vùng biển xa và prior tọa độ/làn xe. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
@@ -44,6 +44,7 @@ public final class AiCoordinator implements AutoCloseable {
     private long lastSignsAt;
     private int analysisPhase;
     private int scenePassCounter;
+    private int signPassCounter;
     private int signTile;
     private int lightTile;
     private int errors;
@@ -66,9 +67,12 @@ public final class AiCoordinator implements AutoCloseable {
         List<Detection> overlay = new ArrayList<>();
         int phase = analysisPhase++;
         LandmarkHint hint = landmarkHint;
+        // Model biển VN cũng có lớp đèn đỏ/xanh. Khi chưa có hint, dành 2/3 lượt cho
+        // biển để giảm bỏ sót ở xa; COCO vẫn quét mỗi lượt thứ ba và tracker đọc màu
+        // trực tiếp trên mọi frame giữa hai lượt detector.
         boolean scenePhase = hint.expectsLight()
                 ? phase % 3 != 2
-                : hint.expectsSign() ? phase % 3 == 0 : (phase & 1) == 0;
+                : hint.expectsSign() ? phase % 4 == 0 : phase % 3 == 0;
         SignalObservation observed = observeTrackedLight(frame, nowMs);
         SignConsensusTracker.Stable stableSign;
         ForwardHazardAnalyzer.Result hazard = hazardAnalyzer.current(nowMs);
@@ -98,7 +102,7 @@ public final class AiCoordinator implements AutoCloseable {
         } else {
             lastVisionMode = "BIỂN VN";
             try {
-                SignPass signPass = detectSignsAtDistance(frame, hint);
+                SignPass signPass = detectSignsAtDistance(frame, hint, nowMs);
                 lastSignRawCount = signPass.signs.size();
                 if (!signPass.signs.isEmpty()) {
                     lastSigns = signPass.signs;
@@ -163,7 +167,7 @@ public final class AiCoordinator implements AutoCloseable {
         float signConfidence = stableSign == null ? 0f : stableSign.confidence;
         long signTrackId = stableSign == null ? -1L : stableSign.trackId;
         long elapsed = SystemClock.elapsedRealtime() - started;
-        String status = lastVisionMode
+        String status = "FUSION • " + lastVisionMode
                 + " • LÀN " + lanePreference.vi
                 + (targetLocked ? " • KHÓA MỤC TIÊU" : " • ĐANG TÌM")
                 + (hint.isActive() ? " • ĐIỂM ĐÃ HỌC "
@@ -231,14 +235,26 @@ public final class AiCoordinator implements AutoCloseable {
         return new SignalObservation(tracked, color.state, confidence);
     }
 
-    private SignPass detectSignsAtDistance(Bitmap frame, LandmarkHint hint) throws Exception {
-        RectF tile = hint.expectsSign()
-                ? learnedRegion(frame, hint, .42f, .58f) : nextSignTile(frame);
-        if (hint.expectsSign()) lastVisionMode = "NHỚ VỊ TRÍ BIỂN";
-        else if (tile == null) lastVisionMode = "BIỂN TOÀN CẢNH";
+    private SignPass detectSignsAtDistance(
+            Bitmap frame, LandmarkHint hint, long nowMs) throws Exception {
+        int pass = signPassCounter++;
+        RectF focus = signTracker.focusRegion(
+                nowMs, frame.getWidth(), frame.getHeight());
+        RectF tile;
+        if (focus != null && pass % 3 != 2) {
+            tile = focus;
+            lastVisionMode = "PHÓNG BIỂN Ở XA";
+        } else if (hint.expectsSign() && pass % 3 != 2) {
+            tile = learnedRegion(frame, hint, .40f, .54f);
+            lastVisionMode = "ĐỐI CHIẾU BIỂN ĐÃ NHỚ";
+        } else {
+            tile = nextSignTile(frame);
+            lastVisionMode = tile == null ? "BIỂN TOÀN CẢNH" : "QUÉT BIỂN XA";
+        }
         List<Detection> raw = signDetector.detect(
                 frame, tile,
-                hint.expectsSign() ? 0.11f : tile == null ? 0.15f : 0.13f,
+                focus != null ? 0.12f
+                        : hint.expectsSign() ? 0.11f : tile == null ? 0.15f : 0.12f,
                 null, 40);
         List<Detection> signs = new ArrayList<>();
         SignalCandidate signal = null;
@@ -291,12 +307,12 @@ public final class AiCoordinator implements AutoCloseable {
         float width = frame.getWidth();
         float height = frame.getHeight();
         if (slot == 1) {
-            return new RectF(width * 0.44f, 0, width, height * 0.84f);
+            return new RectF(width * 0.50f, 0, width, height * 0.78f);
         }
         if (slot == 0) {
-            return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.84f);
+            return new RectF(width * 0.25f, 0, width * 0.75f, height * 0.78f);
         }
-        if (slot == -1) return new RectF(0, 0, width * 0.56f, height * 0.84f);
+        if (slot == -1) return new RectF(0, 0, width * 0.50f, height * 0.78f);
         return null;
     }
 
@@ -305,13 +321,13 @@ public final class AiCoordinator implements AutoCloseable {
         float width = frame.getWidth();
         float height = frame.getHeight();
         if (slot == 1) {
-            return new RectF(width * 0.44f, 0, width, height * 0.88f);
+            return new RectF(width * 0.54f, 0, width, height * 0.80f);
         }
         if (slot == 0) {
-            return new RectF(width * 0.22f, 0, width * 0.78f, height * 0.88f);
+            return new RectF(width * 0.27f, 0, width * 0.73f, height * 0.80f);
         }
         if (slot == -1) {
-            return new RectF(0, 0, width * 0.56f, height * 0.88f);
+            return new RectF(0, 0, width * 0.46f, height * 0.80f);
         }
         return null;
     }
@@ -383,6 +399,7 @@ public final class AiCoordinator implements AutoCloseable {
         lastSignsAt = 0L;
         analysisPhase = 0;
         scenePassCounter = 0;
+        signPassCounter = 0;
         signTile = 0;
         lightTile = 0;
         errors = 0;

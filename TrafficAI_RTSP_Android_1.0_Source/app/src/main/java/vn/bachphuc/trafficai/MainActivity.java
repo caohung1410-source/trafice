@@ -7,6 +7,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Matrix;
@@ -112,6 +113,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private CheckBox tcpCheck;
     private TextView statusText;
     private TextView aiBadge;
+    private TextView visionQualityText;
     private TextView cameraSourceBadge;
     private TextView lightResult;
     private TextView countdownResult;
@@ -305,6 +307,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         tcpCheck = findViewById(R.id.tcpCheck);
         statusText = findViewById(R.id.statusText);
         aiBadge = findViewById(R.id.aiBadge);
+        visionQualityText = findViewById(R.id.visionQualityText);
         cameraSourceBadge = findViewById(R.id.cameraSourceBadge);
         lightResult = findViewById(R.id.lightResult);
         countdownResult = findViewById(R.id.countdownResult);
@@ -672,7 +675,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.3.2 • "
+        String metadata = "{\"name\":\"TrafficAI 2.4.0 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -1325,7 +1328,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.3.2: camera đúng chiều • AI nhạy cao • ưu tiên làn "
+                    setStatus("TrafficAI 2.4.0: Precision Fusion • phóng biển xa • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1390,10 +1393,31 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.3.2 • NHẠY CAO • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.4 • PRECISION FUSION • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
+
+        boolean mapAgrees = mapAgreesWithSign(result.signText);
+        int qualityScore = RecognitionReliability.qualityScore(
+                result.lightConfidence,
+                result.signConfidence,
+                result.targetLocked,
+                result.countdown != null,
+                result.inferenceMs);
+        RecognitionReliability.Level qualityLevel =
+                RecognitionReliability.qualityLevel(qualityScore);
+        String qualityLabel = qualityLevel == RecognitionReliability.Level.CONFIRMED
+                ? "AI ĐÃ XÁC NHẬN"
+                : qualityLevel == RecognitionReliability.Level.VERIFYING
+                ? "AI ĐANG ĐỐI CHIẾU" : "AI ĐANG QUÉT";
+        if (mapAgrees) qualityLabel += " • KHỚP MAP";
+        visionQualityText.setText(qualityLabel + " • " + qualityScore + "%");
+        int qualityColor = qualityLevel == RecognitionReliability.Level.CONFIRMED
+                ? Color.rgb(21, 111, 81)
+                : qualityLevel == RecognitionReliability.Level.VERIFYING
+                ? Color.rgb(151, 108, 24) : Color.rgb(27, 67, 99);
+        visionQualityText.setBackgroundTintList(ColorStateList.valueOf(qualityColor));
 
         String light = result.lightState == TrafficState.UNKNOWN
                 ? "ĐÈN\nCHƯA CHẮC"
@@ -1410,13 +1434,30 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 ? "PHÍA TRƯỚC\nĐANG QUAN SÁT"
                 : "CẢNH BÁO\n" + result.hazardText + " "
                 + Math.round(result.hazardConfidence * 100f) + "%");
+        updateDecisionCardColors(result, mapAgrees);
         speakStableResult(result);
+    }
+
+    private void updateDecisionCardColors(AiResult result, boolean mapAgrees) {
+        int lightColor = Color.rgb(25, 49, 69);
+        if (result.lightState == TrafficState.RED) lightColor = Color.rgb(135, 31, 43);
+        else if (result.lightState == TrafficState.YELLOW) lightColor = Color.rgb(145, 109, 22);
+        else if (result.lightState == TrafficState.GREEN) lightColor = Color.rgb(20, 105, 73);
+        lightResult.setBackgroundTintList(ColorStateList.valueOf(lightColor));
+        countdownResult.setBackgroundTintList(ColorStateList.valueOf(result.countdown == null
+                ? Color.rgb(25, 49, 69) : Color.rgb(67, 55, 118)));
+        boolean signConfirmed = RecognitionReliability.shouldAnnounceSign(
+                result.signConfidence, mapAgrees);
+        signResult.setBackgroundTintList(ColorStateList.valueOf(signConfirmed
+                ? Color.rgb(18, 91, 83) : Color.rgb(25, 49, 69)));
     }
 
     private void speakStableResult(AiResult result) {
         if (!ttsReady) return;
         long now = SystemClock.elapsedRealtime();
-        String signal = result.lightState == TrafficState.UNKNOWN ? "" : result.lightState.vi;
+        String signal = result.lightState == TrafficState.UNKNOWN
+                || !RecognitionReliability.shouldAnnounceSignal(result.lightConfidence)
+                ? "" : result.lightState.vi;
         if (!result.hazardText.isEmpty()
                 && result.hazardConfidence >= 0.78f
                 && currentSpeedKmh >= 12
@@ -1464,7 +1505,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 && now - lastSignSpeechAt > 3_500L;
         boolean repeatedSign = result.signText.equals(lastSpokenSign)
                 && now - lastSignSpeechAt > 30_000L;
+        boolean mapAgrees = mapAgreesWithSign(result.signText);
         if (!result.signText.isEmpty()
+                && RecognitionReliability.shouldAnnounceSign(
+                result.signConfidence, mapAgrees)
                 && ((newSignTrack && now - lastSignSpeechAt > 1_200L)
                 || correctedSign || repeatedSign)) {
             SpeedSignPolicy.Parsed speedSign = SpeedSignPolicy.parse(result.signText);
@@ -1493,6 +1537,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         updateCameraSurfaceVisibility();
         overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        visionQualityText.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         cameraSourceBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         mapButton.setText(mapVisible ? "CAMERA" : "MAP");
         if (mapVisible && lastLocation != null) {
@@ -1851,9 +1896,18 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 1);
     }
 
+    private boolean mapAgreesWithSign(String detectedLabel) {
+        LandmarkHint hint = currentLandmarkHint;
+        return hint != null
+                && hint.isActive()
+                && hint.expectsSign()
+                && RecognitionReliability.labelsAgree(detectedLabel, hint.label);
+    }
+
     private void updateLimitFromSign(AiResult result) {
         if (result == null || result.signText == null || result.signTrackId <= 0L
-                || result.signConfidence < .33f) return;
+                || !RecognitionReliability.shouldApplySpeedLimit(
+                result.signConfidence, mapAgreesWithSign(result.signText))) return;
         String label = result.signText.trim();
         SpeedSignPolicy.Parsed parsed = SpeedSignPolicy.parse(label);
         if (parsed == null) return;
@@ -1908,6 +1962,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         signResult.setText("BIỂN BÁO\n—");
         hazardResult.setText("PHÍA TRƯỚC • ĐANG QUAN SÁT");
         roadAlertBanner.setText("ĐANG QUAN SÁT PHÍA TRƯỚC");
+        visionQualityText.setText("AI ĐANG QUÉT • 0%");
+        visionQualityText.setBackgroundTintList(
+                ColorStateList.valueOf(Color.rgb(27, 67, 99)));
+        lightResult.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(25, 49, 69)));
+        countdownResult.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(25, 49, 69)));
+        signResult.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(25, 49, 69)));
         lastSpokenSignal = "";
         lastSpokenSign = "";
         lastSpokenSignTrackId = -1L;

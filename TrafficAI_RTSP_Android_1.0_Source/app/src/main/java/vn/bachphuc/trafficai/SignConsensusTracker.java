@@ -67,6 +67,49 @@ public final class SignConsensusTracker {
         return tracks.size();
     }
 
+    /**
+     * Trả về vùng phóng đại quanh ứng viên mới nhất. Detector sẽ nhìn lại vùng này ở
+     * hai lượt kế tiếp để tăng số pixel của biển xa, rồi bắt buộc quay lại quét rộng.
+     */
+    public synchronized RectF focusRegion(long nowMs, int frameWidth, int frameHeight) {
+        Track best = null;
+        float bestScore = -1f;
+        for (Track track : tracks) {
+            if (track.lastDetection == null || nowMs - track.lastSeenAt > 1_900L) continue;
+            float freshness = 1f - (nowMs - track.lastSeenAt) / 1_900f;
+            float score = track.lastDetection.confidence * .68f
+                    + Math.min(1f, track.samples.size() / 3f) * .22f
+                    + Math.max(0f, freshness) * .10f;
+            if (score > bestScore) {
+                best = track;
+                bestScore = score;
+            }
+        }
+        if (best == null) return null;
+
+        RectF box = best.lastDetection.box;
+        float wantedWidth = Math.max(frameWidth * .30f, box.width() * 8.5f);
+        float wantedHeight = Math.max(frameHeight * .42f, box.height() * 7.0f);
+        wantedWidth = Math.min(frameWidth * .52f, wantedWidth);
+        wantedHeight = Math.min(frameHeight * .64f, wantedHeight);
+        float centerX = box.centerX();
+        float centerY = box.centerY();
+        RectF region = new RectF(
+                centerX - wantedWidth / 2f,
+                centerY - wantedHeight / 2f,
+                centerX + wantedWidth / 2f,
+                centerY + wantedHeight / 2f);
+        if (region.left < 0f) region.offset(-region.left, 0f);
+        if (region.right > frameWidth) region.offset(frameWidth - region.right, 0f);
+        if (region.top < 0f) region.offset(0f, -region.top);
+        if (region.bottom > frameHeight) region.offset(0f, frameHeight - region.bottom);
+        region.left = Math.max(0f, region.left);
+        region.top = Math.max(0f, region.top);
+        region.right = Math.min(frameWidth, region.right);
+        region.bottom = Math.min(frameHeight, region.bottom);
+        return region;
+    }
+
     public synchronized void reset() {
         tracks.clear();
         stable = null;

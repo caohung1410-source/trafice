@@ -1,6 +1,17 @@
-# TrafficAI Drive 2.3.2 • Camera Orientation Fix ARM64
+# TrafficAI Drive 2.4 • Precision Fusion ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.4: Precision Fusion
+
+- Giao diện HUD mới hiển thị rõ **AI đang quét / đang đối chiếu / đã xác nhận**, tô màu thẻ đèn, số giây và biển để người lái nhìn nhanh.
+- Dành 2/3 lượt inference cho model biển Việt Nam khi chưa có gợi ý vị trí; model này vẫn hỗ trợ lớp đèn đỏ/xanh, còn COCO quét toàn cảnh mỗi lượt thứ ba.
+- Khi thấy một ứng viên biển xa, hai lượt kế tiếp tự phóng đúng vùng đó rồi quay lại quét rộng, tăng số pixel mà không hạ ngưỡng quyết định.
+- Detector tiếp tục giữ ứng viên nhạy từ 0,11–0,15, nhưng TTS và giới hạn tốc độ đi qua cổng an toàn riêng; kết quả yếu chỉ hiển thị/tracking và chưa được đọc.
+- Map Memory/OSM chỉ giảm ngưỡng khi nhãn biển AI thật sự trùng nhãn đã biết; prior vị trí không được tự biến một phát hiện yếu thành phát hiện mạnh.
+- Phân tích màu đèn bổ sung điểm tập trung không gian của cụm LED, giảm nhầm màu nền/quảng cáo nằm trong hộp detector.
+
+Không có hệ thống camera đơn nào chính xác tuyệt đối trong mọi góc nhìn, mưa, chói sáng hoặc biển bị che. Số phần trăm trên HUD là độ ổn định của bằng chứng nhiều khung, không phải cam kết xác suất đúng tuyệt đối. Muốn công bố độ chính xác cần đo trên tập video độc lập từ chính camera và tuyến đường sử dụng.
 
 ## Bản 2.3.2: sửa chiều camera điện thoại
 
@@ -86,7 +97,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.3.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.4 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

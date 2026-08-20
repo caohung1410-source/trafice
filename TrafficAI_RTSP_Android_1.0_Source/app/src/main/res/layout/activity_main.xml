@@ -34,7 +34,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="TrafficAI Drive 2.3.2"
+                    android:text="TrafficAI Drive 2.4"
                     android:textColor="#FFFFFF"
                     android:textSize="20sp"
                     android:textStyle="bold" />
@@ -300,6 +300,23 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/visionQualityText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/alert_banner"
+                android:elevation="4dp"
+                android:paddingBottom="6dp"
+                android:paddingEnd="10dp"
+                android:paddingStart="10dp"
+                android:paddingTop="6dp"
+                android:text="AI ĐANG QUÉT • 0%"
+                android:textColor="#FFFFFF"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/cameraSourceBadge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -446,7 +463,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="CÀI ĐẶT TRAFFICAI 2.3.2"
+                    android:text="CÀI ĐẶT TRAFFICAI 2.4"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />

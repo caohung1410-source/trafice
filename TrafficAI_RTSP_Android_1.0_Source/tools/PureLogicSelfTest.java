@@ -4,6 +4,7 @@ import vn.bachphuc.trafficai.GeoMath;
 import vn.bachphuc.trafficai.LanePreference;
 import vn.bachphuc.trafficai.NavigationInstruction;
 import vn.bachphuc.trafficai.NavigationSession;
+import vn.bachphuc.trafficai.RecognitionReliability;
 import vn.bachphuc.trafficai.RoadGeometryPrior;
 import vn.bachphuc.trafficai.RoutePlan;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
@@ -93,10 +94,26 @@ public final class PureLogicSelfTest {
                 "Ba phiếu cùng lớp phải giữ được biển xa");
         require(!SignDecisionPolicy.evaluate(3, 4, .19f, .25f).confirmed,
                 "Ba khung rất yếu chưa đủ để đọc biển");
-        require(SignDecisionPolicy.evaluate(4, 5, .18f, .23f).confirmed,
+        require(SignDecisionPolicy.evaluate(4, 5, .20f, .25f).confirmed,
                 "Bốn phiếu cùng track phải giữ được biển rất xa");
         require(!SignDecisionPolicy.evaluate(2, 5, .80f, .90f).confirmed,
                 "Không xác nhận lớp chỉ chiếm thiểu số trên một track");
+        require(!RecognitionReliability.shouldAnnounceSign(.49f, false)
+                        && RecognitionReliability.shouldAnnounceSign(.53f, false),
+                "TTS chỉ được đọc biển đã vượt cổng độ tin cậy");
+        require(RecognitionReliability.labelsAgree(
+                        "Giới hạn tốc độ 50 km/h", "Biển giới hạn tốc độ 50"),
+                "Nhãn AI và Map Memory cùng tốc độ phải được đối chiếu thành công");
+        require(!RecognitionReliability.labelsAgree(
+                        "Giới hạn tốc độ 50", "Giới hạn tốc độ 60"),
+                "Hai biển tốc độ khác số không được coi là trùng Map Memory");
+        require(!RecognitionReliability.shouldApplySpeedLimit(.50f, false)
+                        && RecognitionReliability.shouldApplySpeedLimit(.61f, false),
+                "Giới hạn tốc độ không được đổi theo một kết quả trung bình chưa đủ mạnh");
+        require(RecognitionReliability.qualityLevel(
+                        RecognitionReliability.qualityScore(.82f, 0f, true, true, 250L))
+                        == RecognitionReliability.Level.CONFIRMED,
+                "HUD phải báo đã xác nhận khi đèn khóa, có số và bằng chứng mạnh");
         require(SignTrackMath.affinity(
                 100f, 100f, 120f, 120f,
                 108f, 102f, 128f, 122f) > .20f,

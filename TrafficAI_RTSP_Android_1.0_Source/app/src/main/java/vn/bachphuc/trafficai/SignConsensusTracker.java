@@ -1,56 +1,202 @@
 package vn.bachphuc.trafficai;
 
+import android.graphics.RectF;
+
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/** Theo dõi từng biển theo vị trí rồi mới bỏ phiếu lớp, thay vì gộp mọi biển cùng loại. */
 public final class SignConsensusTracker {
-    private static final long WINDOW_MS = 1_800;
-    private static final long LOST_MS = 2_200;
+    private static final long WINDOW_MS = 5_000L;
+    private static final long TRACK_LOST_MS = 5_400L;
+    private static final long STABLE_LOST_MS = 4_200L;
+    private static final float MIN_SAMPLE_CONFIDENCE = .13f;
+    private static final float MATCH_THRESHOLD = .20f;
 
-    private final Map<Integer, Deque<Sample>> samples = new HashMap<>();
+    private final List<Track> tracks = new ArrayList<>();
+    private long nextTrackId = 1L;
     private Stable stable;
 
     public synchronized Stable update(List<Detection> observations, long nowMs) {
-        for (Detection detection : observations) {
-            if (detection.confidence < 0.40f) continue;
-            Deque<Sample> queue = samples.get(detection.classId);
-            if (queue == null) {
-                queue = new ArrayDeque<>();
-                samples.put(detection.classId, queue);
+        prune(nowMs);
+        List<Detection> sorted = new ArrayList<>(observations);
+        sorted.sort(Comparator.comparingDouble((Detection value) -> value.confidence).reversed());
+        Set<Long> updatedTrackIds = new HashSet<>();
+
+        for (Detection detection : sorted) {
+            if (detection == null || detection.confidence < MIN_SAMPLE_CONFIDENCE) continue;
+            Track best = null;
+            float bestAffinity = -1f;
+            for (Track candidate : tracks) {
+                if (updatedTrackIds.contains(candidate.id)) continue;
+                float affinity = spatialAffinity(candidate.lastDetection, detection);
+                if (affinity > bestAffinity) {
+                    bestAffinity = affinity;
+                    best = candidate;
+                }
             }
-            queue.addLast(new Sample(detection, nowMs));
+            if (best == null || bestAffinity < MATCH_THRESHOLD) {
+                best = new Track(nextTrackId++);
+                tracks.add(best);
+            }
+            best.add(detection, nowMs);
+            updatedTrackIds.add(best.id);
         }
 
-        Stable best = null;
-        for (Map.Entry<Integer, Deque<Sample>> entry : samples.entrySet()) {
-            Deque<Sample> queue = entry.getValue();
-            while (!queue.isEmpty() && nowMs - queue.peekFirst().at > WINDOW_MS) queue.removeFirst();
-            if (queue.size() < 2) continue;
-            float confidence = 0f;
-            Detection last = null;
-            for (Sample sample : queue) {
-                confidence += sample.detection.confidence;
-                last = sample.detection;
-            }
-            confidence /= queue.size();
-            float temporal = Math.min(1f, queue.size() / 3f);
-            float fused = confidence * 0.82f + temporal * 0.18f;
-            if (fused >= 0.58f && (best == null || fused > best.confidence)) {
-                best = new Stable(last, fused, nowMs);
+        Stable bestStable = null;
+        for (Track track : tracks) {
+            Stable candidate = track.evaluate(nowMs);
+            if (candidate != null
+                    && (bestStable == null || candidate.confidence > bestStable.confidence)) {
+                bestStable = candidate;
             }
         }
-        samples.entrySet().removeIf(entry -> entry.getValue().isEmpty());
-        if (best != null) stable = best;
-        if (stable != null && nowMs - stable.lastSeenAt > LOST_MS) stable = null;
+        if (bestStable != null) stable = bestStable;
+        if (stable != null && nowMs - stable.lastSeenAt > STABLE_LOST_MS) stable = null;
         return stable;
     }
 
+    public synchronized int activeTrackCount() {
+        return tracks.size();
+    }
+
+    /**
+     * Trả về vùng phóng đại quanh ứng viên mới nhất. Detector sẽ nhìn lại vùng này ở
+     * hai lượt kế tiếp để tăng số pixel của biển xa, rồi bắt buộc quay lại quét rộng.
+     */
+    public synchronized RectF focusRegion(long nowMs, int frameWidth, int frameHeight) {
+        Track best = null;
+        float bestScore = -1f;
+        for (Track track : tracks) {
+            if (track.lastDetection == null || nowMs - track.lastSeenAt > 1_900L) continue;
+            float freshness = 1f - (nowMs - track.lastSeenAt) / 1_900f;
+            float score = track.lastDetection.confidence * .68f
+                    + Math.min(1f, track.samples.size() / 3f) * .22f
+                    + Math.max(0f, freshness) * .10f;
+            if (score > bestScore) {
+                best = track;
+                bestScore = score;
+            }
+        }
+        if (best == null) return null;
+
+        RectF box = best.lastDetection.box;
+        float wantedWidth = Math.max(frameWidth * .30f, box.width() * 8.5f);
+        float wantedHeight = Math.max(frameHeight * .42f, box.height() * 7.0f);
+        wantedWidth = Math.min(frameWidth * .52f, wantedWidth);
+        wantedHeight = Math.min(frameHeight * .64f, wantedHeight);
+        float centerX = box.centerX();
+        float centerY = box.centerY();
+        RectF region = new RectF(
+                centerX - wantedWidth / 2f,
+                centerY - wantedHeight / 2f,
+                centerX + wantedWidth / 2f,
+                centerY + wantedHeight / 2f);
+        if (region.left < 0f) region.offset(-region.left, 0f);
+        if (region.right > frameWidth) region.offset(frameWidth - region.right, 0f);
+        if (region.top < 0f) region.offset(0f, -region.top);
+        if (region.bottom > frameHeight) region.offset(0f, frameHeight - region.bottom);
+        region.left = Math.max(0f, region.left);
+        region.top = Math.max(0f, region.top);
+        region.right = Math.min(frameWidth, region.right);
+        region.bottom = Math.min(frameHeight, region.bottom);
+        return region;
+    }
+
     public synchronized void reset() {
-        samples.clear();
+        tracks.clear();
         stable = null;
+        nextTrackId = 1L;
+    }
+
+    private void prune(long nowMs) {
+        for (Track track : tracks) track.prune(nowMs);
+        tracks.removeIf(track -> track.samples.isEmpty()
+                || nowMs - track.lastSeenAt > TRACK_LOST_MS);
+        while (tracks.size() > 48) {
+            Track oldest = tracks.stream()
+                    .min(Comparator.comparingLong(value -> value.lastSeenAt))
+                    .orElse(null);
+            if (oldest == null) break;
+            tracks.remove(oldest);
+        }
+    }
+
+    private static float spatialAffinity(Detection first, Detection second) {
+        if (first == null || second == null) return 0f;
+        RectF a = first.box;
+        RectF b = second.box;
+        return SignTrackMath.affinity(
+                a.left, a.top, a.right, a.bottom,
+                b.left, b.top, b.right, b.bottom);
+    }
+
+    private static final class Track {
+        final long id;
+        final Deque<Sample> samples = new ArrayDeque<>();
+        Detection lastDetection;
+        long lastSeenAt;
+
+        Track(long id) {
+            this.id = id;
+        }
+
+        void add(Detection detection, long nowMs) {
+            samples.addLast(new Sample(detection, nowMs));
+            lastDetection = detection;
+            lastSeenAt = nowMs;
+            prune(nowMs);
+            while (samples.size() > 7) samples.removeFirst();
+        }
+
+        void prune(long nowMs) {
+            while (!samples.isEmpty() && nowMs - samples.peekFirst().at > WINDOW_MS) {
+                samples.removeFirst();
+            }
+        }
+
+        Stable evaluate(long nowMs) {
+            if (samples.size() < 2 || nowMs - lastSeenAt > 1_800L) return null;
+            Map<Integer, Vote> votes = new HashMap<>();
+            for (Sample sample : samples) {
+                Vote vote = votes.get(sample.detection.classId);
+                if (vote == null) {
+                    vote = new Vote();
+                    votes.put(sample.detection.classId, vote);
+                }
+                vote.count++;
+                vote.totalConfidence += sample.detection.confidence;
+                vote.strongest = Math.max(vote.strongest, sample.detection.confidence);
+                if (vote.last == null || sample.at > vote.last.at) vote.last = sample;
+            }
+
+            Stable best = null;
+            for (Vote vote : votes.values()) {
+                float average = vote.totalConfidence / Math.max(1, vote.count);
+                SignDecisionPolicy.Decision decision = SignDecisionPolicy.evaluate(
+                        vote.count, samples.size(), average, vote.strongest);
+                if (!decision.confirmed || vote.last == null
+                        || nowMs - vote.last.at > 1_800L) continue;
+                Stable candidate = new Stable(
+                        id, vote.last.detection, decision.confidence, vote.last.at);
+                if (best == null || candidate.confidence > best.confidence) best = candidate;
+            }
+            return best;
+        }
+    }
+
+    private static final class Vote {
+        int count;
+        float totalConfidence;
+        float strongest;
+        Sample last;
     }
 
     private static final class Sample {
@@ -64,11 +210,13 @@ public final class SignConsensusTracker {
     }
 
     public static final class Stable {
+        public final long trackId;
         public final Detection detection;
         public final float confidence;
         public final long lastSeenAt;
 
-        Stable(Detection detection, float confidence, long lastSeenAt) {
+        Stable(long trackId, Detection detection, float confidence, long lastSeenAt) {
+            this.trackId = trackId;
             this.detection = detection;
             this.confidence = confidence;
             this.lastSeenAt = lastSeenAt;

@@ -104,6 +104,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private TextureView phoneCameraView;
     private DetectionOverlayView overlayView;
     private View settingsPanel;
+    private View settingsHomeList;
+    private View settingsDetailsPanel;
+    private TextView settingsTitleText;
+    private View quickMenuOverlay;
+    private View incidentOverlay;
+    private View soundToggleButton;
     private EditText fullUrlInput;
     private EditText hostInput;
     private EditText portInput;
@@ -163,6 +169,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private boolean aiInitializing;
     private TextToSpeech textToSpeech;
     private boolean ttsReady;
+    private boolean voiceAlertsEnabled = true;
     private volatile boolean destroyed;
     private boolean framePumpEnabled;
 
@@ -197,7 +204,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private MapView baseMapView;
     private MapLibreMap baseMap;
     private boolean mapStyleReady;
-    private boolean mapVisible;
+    private boolean mapVisible = true;
     private long lastMapCameraAt;
     private OfflineManager offlineManager;
     private OfflineRegion downloadingRegion;
@@ -298,6 +305,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraView.setSurfaceTextureListener(phoneCameraTextureListener);
         overlayView = findViewById(R.id.overlayView);
         settingsPanel = findViewById(R.id.settingsPanel);
+        settingsHomeList = findViewById(R.id.settingsHomeList);
+        settingsDetailsPanel = findViewById(R.id.settingsDetailsPanel);
+        settingsTitleText = findViewById(R.id.settingsTitleText);
+        quickMenuOverlay = findViewById(R.id.quickMenuOverlay);
+        incidentOverlay = findViewById(R.id.incidentOverlay);
+        soundToggleButton = findViewById(R.id.soundToggleButton);
         fullUrlInput = findViewById(R.id.fullUrlInput);
         hostInput = findViewById(R.id.hostInput);
         portInput = findViewById(R.id.portInput);
@@ -353,9 +366,38 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         Button limit50 = findViewById(R.id.limit50Button);
         Button limit60 = findViewById(R.id.limit60Button);
         Button limit80 = findViewById(R.id.limit80Button);
+        View quickSearch = findViewById(R.id.quickSearchButton);
+        View quickMenu = findViewById(R.id.quickMenuButton);
+        View assistantAction = findViewById(R.id.assistantActionButton);
+        View closeQuickMenu = findViewById(R.id.closeQuickMenuButton);
+        View overlaySearch = findViewById(R.id.overlaySearchButton);
+        View overlayReport = findViewById(R.id.overlayReportButton);
+        View closeIncident = findViewById(R.id.closeIncidentButton);
+        View zoomIn = findViewById(R.id.zoomInButton);
+        View zoomOut = findViewById(R.id.zoomOutButton);
 
-        toggleSettings.setOnClickListener(view -> setSettingsVisible(true));
-        closeSettings.setOnClickListener(view -> setSettingsVisible(false));
+        toggleSettings.setOnClickListener(view -> {
+            showQuickMenu(false);
+            setSettingsVisible(true);
+        });
+        closeSettings.setOnClickListener(view -> handleSettingsBack());
+        quickSearch.setOnClickListener(view -> showNavigationPanel(true));
+        quickMenu.setOnClickListener(view -> showQuickMenu(true));
+        closeQuickMenu.setOnClickListener(view -> showQuickMenu(false));
+        overlaySearch.setOnClickListener(view -> {
+            showQuickMenu(false);
+            showNavigationPanel(true);
+        });
+        assistantAction.setOnClickListener(view -> showIncidentOverlay(true));
+        overlayReport.setOnClickListener(view -> {
+            showQuickMenu(false);
+            showIncidentOverlay(true);
+        });
+        closeIncident.setOnClickListener(view -> showIncidentOverlay(false));
+        zoomIn.setOnClickListener(view -> zoomMap(true));
+        zoomOut.setOnClickListener(view -> zoomMap(false));
+        soundToggleButton.setOnClickListener(view ->
+                setVoiceAlertsEnabled(!voiceAlertsEnabled, true));
         subStream.setOnClickListener(view -> setImouSubtype(1));
         mainStream.setOnClickListener(view -> setImouSubtype(0));
         connect.setOnClickListener(view -> connectRtsp());
@@ -363,7 +405,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraButton.setOnClickListener(view -> switchToPhoneCamera());
         rotatePhoneCameraButton.setOnClickListener(view -> rotatePhoneCameraPreview());
         initAiButton.setOnClickListener(view -> initializeAi());
-        mapButton.setOnClickListener(view -> toggleMap());
+        mapButton.setOnClickListener(view -> {
+            showQuickMenu(false);
+            toggleMap();
+        });
         downloadMapButton.setOnClickListener(view -> downloadOfflineMap());
         voiceSearchButton.setOnClickListener(view -> startVoiceDestinationSearch());
         routeButton.setOnClickListener(view -> searchAndRoute());
@@ -382,21 +427,30 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         limit60.setOnClickListener(view -> setSpeedLimit(60, "Đặt thủ công"));
         limit80.setOnClickListener(view -> setSpeedLimit(80, "Đặt thủ công"));
         testSpeech.setOnClickListener(view -> {
-            if (ttsReady) {
+            if (!voiceAlertsEnabled) {
+                Toast.makeText(this, "Cảnh báo giọng nói đang tắt ở nút loa trên bản đồ.",
+                        Toast.LENGTH_LONG).show();
+            } else if (ttsReady) {
                 speak("Kiểm tra giọng nói. Đèn đỏ, còn mười giây. Biển báo giới hạn tốc độ bốn mươi.",
                         TextToSpeech.QUEUE_FLUSH);
             } else {
                 Toast.makeText(this,
                         "Chưa có giọng đọc. Hãy chọn Google Speech Services và tải giọng Tiếng Việt.",
-                        Toast.LENGTH_LONG).show();
+                Toast.LENGTH_LONG).show();
             }
         });
+
+        bindSettingsRows();
+        bindIncidentActions();
+        applyMapVisibility();
     }
 
     private void restoreProviderSettings() {
         SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
         manualCameraRotationDegrees = CameraRotationPolicy.normalizeManualDegrees(
                 preferences.getInt("phone_camera_rotation", 0));
+        voiceAlertsEnabled = preferences.getBoolean("voice_alerts_enabled", true);
+        updateSoundToggle();
         updatePhoneCameraRotationButton();
         geocoderUrlInput.setText(preferences.getString(
                 "geocoder", "https://nominatim.openstreetmap.org"));
@@ -433,7 +487,138 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void setSettingsVisible(boolean visible) {
         settingsPanel.setVisibility(visible ? View.VISIBLE : View.GONE);
-        if (visible) settingsPanel.bringToFront();
+        if (visible) {
+            showSettingsHome();
+            settingsPanel.bringToFront();
+        }
+    }
+
+    private void bindSettingsRows() {
+        bindSettingsDetailRow(R.id.settingsMapRow, "Cài đặt bản đồ");
+        bindSettingsDetailRow(R.id.settingsVoiceRow, "Âm thanh, giọng đọc");
+        bindSettingsDetailRow(R.id.settingsWarningRow, "Cài đặt cảnh báo");
+        bindSettingsDetailRow(R.id.settingsNavigationRow, "Cài đặt dẫn đường");
+        bindSettingsDetailRow(R.id.settingsDeviceRow, "Camera và thiết bị");
+        bindSettingsDetailRow(R.id.settingsOtherRow, "Cài đặt nâng cao");
+
+        findViewById(R.id.settingsAccountRow).setOnClickListener(view -> Toast.makeText(this,
+                "Bản cá nhân hoạt động không cần tài khoản và không đồng bộ mật khẩu camera.",
+                Toast.LENGTH_LONG).show());
+        findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
+                "TrafficAI 2.5 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
+                Toast.LENGTH_LONG).show());
+        findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
+                "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
+                Toast.LENGTH_LONG).show());
+        findViewById(R.id.settingsFeedbackRow).setOnClickListener(view -> Toast.makeText(this,
+                "Có thể gửi ảnh lỗi và mô tả qua trang GitHub của dự án.",
+                Toast.LENGTH_LONG).show());
+    }
+
+    private void bindSettingsDetailRow(int viewId, String title) {
+        findViewById(viewId).setOnClickListener(view -> showSettingsDetails(title));
+    }
+
+    private void showSettingsHome() {
+        settingsTitleText.setText("Cài đặt");
+        settingsHomeList.setVisibility(View.VISIBLE);
+        settingsDetailsPanel.setVisibility(View.GONE);
+    }
+
+    private void showSettingsDetails(String title) {
+        settingsTitleText.setText(title);
+        settingsHomeList.setVisibility(View.GONE);
+        settingsDetailsPanel.setVisibility(View.VISIBLE);
+    }
+
+    private void handleSettingsBack() {
+        if (settingsDetailsPanel.getVisibility() == View.VISIBLE) {
+            showSettingsHome();
+        } else {
+            setSettingsVisible(false);
+        }
+    }
+
+    private void showQuickMenu(boolean visible) {
+        quickMenuOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) quickMenuOverlay.bringToFront();
+    }
+
+    private void showIncidentOverlay(boolean visible) {
+        incidentOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) incidentOverlay.bringToFront();
+    }
+
+    private void showNavigationPanel(boolean visible) {
+        navigationPanel.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) {
+            navigationPanel.bringToFront();
+            destinationSearchInput.requestFocus();
+        }
+    }
+
+    private void bindIncidentActions() {
+        findViewById(R.id.incidentRecordingButton).setOnClickListener(view ->
+                reportLocalIncident("Sự kiện cần ghi hình"));
+        findViewById(R.id.incidentLiveButton).setOnClickListener(view -> {
+            showIncidentOverlay(false);
+            switchToPhoneCamera();
+        });
+        bindIncidentAction(R.id.incidentCongestionButton, "Kẹt xe");
+        bindIncidentAction(R.id.incidentAccidentButton, "Tai nạn");
+        bindIncidentAction(R.id.incidentRoadworkButton, "Đoạn đường thi công");
+        bindIncidentAction(R.id.incidentObstacleButton, "Vật cản trên đường");
+        bindIncidentAction(R.id.incidentFloodButton, "Đường ngập");
+    }
+
+    private void bindIncidentAction(int viewId, String label) {
+        findViewById(viewId).setOnClickListener(view -> reportLocalIncident(label));
+    }
+
+    private void reportLocalIncident(String label) {
+        String locationText = lastLocation == null
+                ? "chưa có GPS"
+                : String.format(Locale.US, "%.5f, %.5f",
+                lastLocation.getLatitude(), lastLocation.getLongitude());
+        String message = "Đã đánh dấu cục bộ: " + label + " • " + locationText;
+        roadAlertBanner.setText(label.toUpperCase(new Locale("vi", "VN")));
+        setStatus(message);
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        showIncidentOverlay(false);
+        speak("Đã ghi nhận " + label, TextToSpeech.QUEUE_ADD);
+    }
+
+    private void setVoiceAlertsEnabled(boolean enabled, boolean announce) {
+        voiceAlertsEnabled = enabled;
+        getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
+                .putBoolean("voice_alerts_enabled", enabled)
+                .apply();
+        updateSoundToggle();
+        if (!enabled && textToSpeech != null) textToSpeech.stop();
+        if (announce) {
+            Toast.makeText(this,
+                    enabled ? "Đã bật cảnh báo giọng nói" : "Đã tắt cảnh báo giọng nói",
+                    Toast.LENGTH_SHORT).show();
+            if (enabled) speak("Đã bật cảnh báo giọng nói", TextToSpeech.QUEUE_FLUSH);
+        }
+    }
+
+    private void updateSoundToggle() {
+        if (soundToggleButton == null) return;
+        soundToggleButton.setAlpha(voiceAlertsEnabled ? 1f : .42f);
+        soundToggleButton.setContentDescription(voiceAlertsEnabled
+                ? "Tắt cảnh báo giọng nói" : "Bật cảnh báo giọng nói");
+    }
+
+    private void zoomMap(boolean zoomIn) {
+        if (!mapVisible) setMapVisible(true);
+        if (baseMap == null) {
+            setStatus("Bản đồ đang khởi tạo");
+            return;
+        }
+        baseMap.animateCamera(zoomIn
+                ? CameraUpdateFactory.zoomIn()
+                : CameraUpdateFactory.zoomOut(), 250);
     }
 
     private void saveProviderSettings() {
@@ -675,7 +860,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.4.0 • "
+        String metadata = "{\"name\":\"TrafficAI 2.5.0 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -882,7 +1067,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void updateMapButtonCount() {
         if (mapButton == null || landmarkStore == null || mapVisible) return;
         int count = landmarkStore.count();
-        mapButton.setText(count > 0 ? "MAP " + count : "MAP");
+        mapButton.setText(count > 0 ? "BẢN ĐỒ " + count : "BẢN ĐỒ");
     }
 
     private void setImouSubtype(int subtype) {
@@ -1253,6 +1438,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             MediaItem item = MediaItem.fromUri(Uri.parse(url));
             MediaSource source = factory.createMediaSource(item);
 
+            setMapVisible(false);
+            setSettingsVisible(false);
             if (aiCoordinator != null) aiCoordinator.reset();
             resetUiResults();
             setStatus("Đang mở " + RtspUrlBuilder.redact(url)
@@ -1275,6 +1462,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         closePhoneCamera();
         player.stop();
         player.clearMediaItems();
+        setMapVisible(true);
         updateCameraSurfaceVisibility();
         cameraSourceBadge.setText("CAMERA: ĐÃ TẮT");
         CarTelemetryStore.updateConnection(false, aiCoordinator != null);
@@ -1328,7 +1516,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.4.0: Precision Fusion • phóng biển xa • ưu tiên làn "
+                    setStatus("TrafficAI 2.5.0: Map-first UI • Precision Fusion • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1393,7 +1581,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.4 • PRECISION FUSION • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.5 • PRECISION FUSION • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -1526,12 +1714,28 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void speak(String text, int queueMode) {
-        if (!ttsReady || textToSpeech == null) return;
+        if (!voiceAlertsEnabled || !ttsReady || textToSpeech == null) return;
         textToSpeech.speak(text, queueMode, null, "trafficai-" + SystemClock.elapsedRealtime());
     }
 
     private void toggleMap() {
-        mapVisible = !mapVisible;
+        setMapVisible(!mapVisible);
+    }
+
+    private void setMapVisible(boolean visible) {
+        mapVisible = visible;
+        applyMapVisibility();
+        if (mapVisible && lastLocation != null) {
+            lastMapCameraAt = 0L;
+            redrawMapAnnotations();
+            updateMapPosition(lastLocation);
+            refreshTrafficMapData(false);
+        } else if (!mapVisible) {
+            updateMapButtonCount();
+        }
+    }
+
+    private void applyMapVisibility() {
         baseMapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         updateCameraSurfaceVisibility();
@@ -1539,15 +1743,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         visionQualityText.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         cameraSourceBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
-        mapButton.setText(mapVisible ? "CAMERA" : "MAP");
-        if (mapVisible && lastLocation != null) {
-            lastMapCameraAt = 0L;
-            redrawMapAnnotations();
-            updateMapPosition(lastLocation);
-            refreshTrafficMapData(false);
-        } else {
-            updateMapButtonCount();
-        }
+        mapButton.setText(mapVisible ? "CAMERA" : "BẢN ĐỒ");
     }
 
     private void requestGpsPermission() {
@@ -1930,11 +2126,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void setSpeedLimit(int value, String source) {
         speedLimitKmh = Math.max(0, value);
-        String sourceTag = source != null && source.contains("AI") ? "AI"
-                : source != null && source.contains("OSM") ? "MAP" : "TAY";
         speedLimitResult.setText(speedLimitKmh > 0
-                ? speedLimitKmh + "\n" + sourceTag
-                : "MAX\n—");
+                ? String.valueOf(speedLimitKmh)
+                : "—");
         CarTelemetryStore.updateLimit(speedLimitKmh, source);
         overSpeedSince = 0L;
     }
@@ -2040,12 +2234,20 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     @Override
     public void onBackPressed() {
-        if (settingsPanel != null && settingsPanel.getVisibility() == View.VISIBLE) {
-            setSettingsVisible(false);
+        if (incidentOverlay != null && incidentOverlay.getVisibility() == View.VISIBLE) {
+            showIncidentOverlay(false);
             return;
         }
-        if (mapVisible) {
-            toggleMap();
+        if (quickMenuOverlay != null && quickMenuOverlay.getVisibility() == View.VISIBLE) {
+            showQuickMenu(false);
+            return;
+        }
+        if (settingsPanel != null && settingsPanel.getVisibility() == View.VISIBLE) {
+            handleSettingsBack();
+            return;
+        }
+        if (navigationPanel != null && navigationPanel.getVisibility() == View.VISIBLE) {
+            showNavigationPanel(false);
             return;
         }
         super.onBackPressed();

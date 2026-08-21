@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.4: fusion nhiều khung, phóng vùng biển xa và prior tọa độ/làn xe. */
+/** Điều phối thị giác 2.5: fusion nhiều khung, phóng vùng biển xa và prior tọa độ/làn xe. */
 public final class AiCoordinator implements AutoCloseable {
     private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;

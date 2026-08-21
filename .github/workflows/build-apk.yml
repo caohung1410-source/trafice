@@ -65,12 +65,12 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Give APK a stable name
-        run: cp app/build/outputs/apk/debug/app-debug.apk TrafficAI_RTSP_Android_2.4.0_Precision_Fusion_ARM64_Debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk TrafficAI_RTSP_Android_2.5.0_Map_First_UI_ARM64_Debug.apk
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v7
         with:
-          name: TrafficAI_RTSP_Android_2.4.0_Precision_Fusion_ARM64_Debug
-          path: TrafficAI_RTSP_Android_1.0_Source/TrafficAI_RTSP_Android_2.4.0_Precision_Fusion_ARM64_Debug.apk
+          name: TrafficAI_RTSP_Android_2.5.0_Map_First_UI_ARM64_Debug
+          path: TrafficAI_RTSP_Android_1.0_Source/TrafficAI_RTSP_Android_2.5.0_Map_First_UI_ARM64_Debug.apk
           if-no-files-found: error
           retention-days: 30

@@ -1,6 +1,15 @@
-# TrafficAI Drive 2.4 • Precision Fusion ARM64
+# TrafficAI Drive 2.5 • Map-first UI + Precision Fusion ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.5: giao diện bản đồ toàn màn hình
+
+- Bản đồ/camera trở thành nền toàn màn hình; đồng hồ GPS và biển giới hạn tốc độ nổi ở góc trái theo kiểu HUD dẫn đường.
+- Có cụm nút nổi bật/tắt giọng đọc, zoom bản đồ, tìm điểm đến, menu nhanh và trợ lý báo sự cố; mỗi nút có vùng chạm tối thiểu 48 dp.
+- Menu nhanh toàn màn hình cho phép chuyển Bản đồ/Camera, mở tìm đường, Cài đặt hoặc bảng báo sự cố mà không che giao diện chính thường trực.
+- Bảng báo sự cố dạng bottom-sheet gồm kẹt xe, tai nạn, thi công, vật cản và đường ngập; bản cá nhân hiện đánh dấu cục bộ kèm GPS, chưa gửi lên máy chủ công cộng.
+- Cài đặt đổi sang giao diện sáng, chia theo nhóm giống ứng dụng dẫn đường; mật khẩu/Safety Code RTSP vẫn không được lưu.
+- Khi xem bản đồ, camera tiếp tục cung cấp khung hình ẩn cho AI và cảnh báo giọng nói; có thể tắt riêng TTS bằng nút loa mà không tắt nhận diện.
 
 ## Bản 2.4: Precision Fusion
 
@@ -97,7 +106,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.4 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.5 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

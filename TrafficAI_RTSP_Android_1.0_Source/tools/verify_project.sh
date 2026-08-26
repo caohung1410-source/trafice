@@ -10,6 +10,10 @@ required=(
   "$project_root/app/src/main/res/layout/activity_main.xml"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraRotationPolicy.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraProfileStore.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/MacAddressPolicy.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/MacCameraLocator.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficMapIconFactory.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoadGeometryPrior.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TemporalObjectTracker.java"
@@ -48,18 +52,22 @@ if command -v xmllint >/dev/null 2>&1; then
   done < <(find "$project_root/app/src/main" -name '*.xml' -print0)
 fi
 
-credential_match=false
+# Bản 2.5.1 được phép lưu credential nhưng bắt buộc là ciphertext qua Android Keystore.
 if command -v rg >/dev/null 2>&1; then
-  rg -n '(putString|getString)\([^,]*(password|rtsp|safety|credential)' \
-    "$project_root/app/src/main/java" >/dev/null && credential_match=true
+  if rg -n 'putString\("(password|safety_code|rtsp_url|full_url)"' \
+    "$project_root/app/src/main/java" >/dev/null; then
+    echo "Không đạt: phát hiện credential có thể được lưu bản rõ" >&2
+    exit 1
+  fi
 else
-  grep -REn '(putString|getString)\([^,]*(password|rtsp|safety|credential)' \
-    "$project_root/app/src/main/java" >/dev/null && credential_match=true
+  if grep -REn 'putString\("(password|safety_code|rtsp_url|full_url)"' \
+    "$project_root/app/src/main/java" >/dev/null; then
+    echo "Không đạt: phát hiện credential có thể được lưu bản rõ" >&2
+    exit 1
+  fi
 fi
-if "$credential_match"; then
-  echo "Không đạt: phát hiện khả năng lưu credential" >&2
-  exit 1
-fi
+grep -q 'AndroidKeyStore' "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraProfileStore.java"
+grep -q 'AES/GCM/NoPadding' "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraProfileStore.java"
 
 bash "$project_root/tools/run_pure_logic_test.sh"
 grep -q "org.maplibre.gl:android-sdk" "$project_root/app/build.gradle"
@@ -88,4 +96,7 @@ grep -q 'quickMenuOverlay' "$project_root/app/src/main/res/layout/activity_main.
 grep -q 'incidentOverlay' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'settingsHomeList' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'setVoiceAlertsEnabled' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
-echo "verify_project: PASS • TrafficAI 2.5 • Map-first UI • Precision Fusion • Android Auto"
+grep -q 'mapMarkerIcon' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'macConnectButton' "$project_root/app/src/main/res/layout/activity_main.xml"
+grep -q 'NEARBY_WIFI_DEVICES' "$project_root/app/src/main/AndroidManifest.xml"
+echo "verify_project: PASS • TrafficAI 2.5.1 • Precision • Icon map • Camera Lock"

@@ -1,6 +1,15 @@
-# TrafficAI Drive 2.5 • Map-first UI + Precision Fusion ARM64
+# TrafficAI Drive 2.5.1 • Precision + Camera Lock ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.5.1: nhận diện ổn định, icon bản đồ và lưu camera
+
+- Đèn đã khóa chỉ đổi màu sau ít nhất ba quan sát cùng màu; số đếm cũ bị xóa khi đổi màu và chỉ nhận lại sau khi màu mới ổn định.
+- Phân tích pixel kiểm tra thêm vỏ đèn tối, độ tập trung bóng sáng và tỷ lệ vùng màu để giảm nhầm biển quảng cáo, đèn hậu hoặc vùng trời.
+- Giữ track biển hiện tại khi một track mới chỉ nhỉnh hơn nhẹ, hạn chế đọc nhảy giữa các biển/cột đặt gần nhau.
+- Điểm Map Memory và OSM hiển thị icon riêng cho đèn, biển tốc độ, biển cảnh báo, camera, đường sắt và trạm thu phí.
+- Lưu IP, port, user, đường dẫn, TCP và nguồn camera; URL có credential và Safety Code được mã hóa AES-GCM bằng Android Keystore, không lưu bản rõ.
+- Có thể ghim MAC, thử IP cũ trước rồi quét tối đa một mạng `/24` và chỉ mở RTSP khi bảng láng giềng xác nhận đúng MAC. Một số bản Android có thể chặn đọc ARP; khi đó nên đặt DHCP Reservation trên router để khóa IP theo MAC.
 
 ## Bản 2.5: giao diện bản đồ toàn màn hình
 
@@ -8,7 +17,7 @@
 - Có cụm nút nổi bật/tắt giọng đọc, zoom bản đồ, tìm điểm đến, menu nhanh và trợ lý báo sự cố; mỗi nút có vùng chạm tối thiểu 48 dp.
 - Menu nhanh toàn màn hình cho phép chuyển Bản đồ/Camera, mở tìm đường, Cài đặt hoặc bảng báo sự cố mà không che giao diện chính thường trực.
 - Bảng báo sự cố dạng bottom-sheet gồm kẹt xe, tai nạn, thi công, vật cản và đường ngập; bản cá nhân hiện đánh dấu cục bộ kèm GPS, chưa gửi lên máy chủ công cộng.
-- Cài đặt đổi sang giao diện sáng, chia theo nhóm giống ứng dụng dẫn đường; mật khẩu/Safety Code RTSP vẫn không được lưu.
+- Cài đặt đổi sang giao diện sáng, chia theo nhóm giống ứng dụng dẫn đường; từ 2.5.1 mật khẩu/Safety Code có thể được lưu mã hóa cục bộ.
 - Khi xem bản đồ, camera tiếp tục cung cấp khung hình ẩn cho AI và cảnh báo giọng nói; có thể tắt riêng TTS bằng nút loa mà không tắt nhận diện.
 
 ## Bản 2.4: Precision Fusion
@@ -106,7 +115,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.5 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.5.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 
@@ -164,7 +173,7 @@ Chiều cao thực không thể đổi chính xác thành tọa độ pixel nế
 - Bộ đọc LED 7-segment 1–3 chữ số ở trái/phải/dưới cụm đèn.
 - Countdown chỉ hiển thị số đã nhìn thấy đủ nhiều frame; không chấp nhận chuỗi tăng bất thường; đổi màu, mất bảng hoặc số 0 thì xóa số cũ.
 - Đọc tiếng Việt bằng TextToSpeech; số ban đầu đọc một lần, từ 5 đến 1 đọc từng số.
-- Mật khẩu không được ghi vào log hay SharedPreferences.
+- Mật khẩu không được ghi vào log hoặc SharedPreferences dưới dạng bản rõ; 2.5.1 chỉ lưu ciphertext có khóa nằm trong Android Keystore.
 - Giao diện khởi động độc lập với model: model lỗi/tải chậm không làm màn hình trắng hoặc làm ứng dụng văng.
 
 ## Cách dùng với IMOU C22E-A

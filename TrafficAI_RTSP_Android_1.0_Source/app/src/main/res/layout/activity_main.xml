@@ -420,7 +420,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:maxWidth="250dp"
-                android:text="TrafficAI 2.5 • sẵn sàng"
+                android:text="TrafficAI 2.5.1 • sẵn sàng"
                 android:textColor="#B7F3CB"
                 android:textSize="9sp" />
 
@@ -694,13 +694,16 @@
                             <EditText android:id="@+id/portInput" android:layout_width="70dp" android:layout_height="44dp" android:hint="Port" android:inputType="number" android:singleLine="true" android:text="554" android:textColor="#24262D" />
                             <EditText android:id="@+id/userInput" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:hint="User" android:singleLine="true" android:text="admin" android:textColor="#24262D" />
                         </LinearLayout>
-                        <EditText android:id="@+id/passwordInput" android:layout_width="match_parent" android:layout_height="44dp" android:hint="Mật khẩu / Safety Code (không lưu)" android:inputType="textPassword" android:singleLine="true" android:textColor="#24262D" android:textColorHint="#767985" />
+                        <EditText android:id="@+id/passwordInput" android:layout_width="match_parent" android:layout_height="44dp" android:hint="Mật khẩu / Safety Code (lưu mã hóa trên máy)" android:inputType="textPassword" android:singleLine="true" android:textColor="#24262D" android:textColorHint="#767985" />
                         <EditText android:id="@+id/pathInput" android:layout_width="match_parent" android:layout_height="44dp" android:hint="Đường dẫn RTSP" android:singleLine="true" android:text="/cam/realmonitor?channel=1&amp;subtype=0&amp;unicast=true&amp;proto=Onvif" android:textColor="#24262D" android:textSize="10sp" />
+                        <EditText android:id="@+id/macInput" android:layout_width="match_parent" android:layout_height="44dp" android:hint="MAC camera để ghim cứng • AA:BB:CC:DD:EE:FF" android:inputType="textCapCharacters|textNoSuggestions" android:singleLine="true" android:textColor="#24262D" android:textColorHint="#767985" android:textSize="12sp" />
                         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
                             <Button android:id="@+id/subStreamButton" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="IMOU SUB 1" />
                             <Button android:id="@+id/mainStreamButton" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="MAIN 0" />
                             <CheckBox android:id="@+id/tcpCheck" android:layout_width="wrap_content" android:layout_height="42dp" android:checked="true" android:text="TCP" android:textColor="#303139" />
                         </LinearLayout>
+                        <Button android:id="@+id/macConnectButton" android:layout_width="match_parent" android:layout_height="44dp" android:text="TÌM IP VÀ KẾT NỐI THEO MAC" android:textSize="10sp" android:textStyle="bold" />
+                        <CheckBox android:id="@+id/autoReconnectCheck" android:layout_width="match_parent" android:layout_height="42dp" android:checked="true" android:text="Lưu camera và tự kết nối khi mở ứng dụng" android:textColor="#303139" android:textSize="11sp" />
                         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                             <Button android:id="@+id/connectButton" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="KẾT NỐI" />
                             <Button android:id="@+id/disconnectButton" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="NGẮT" />
@@ -739,7 +742,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="42dp"
                 android:gravity="center"
-                android:text="Version: 2.5.0 • Map-first UI"
+                android:text="Version: 2.5.1 • Precision + Camera Lock"
                 android:textColor="#60626C"
                 android:textSize="12sp"
                 android:textStyle="bold" />

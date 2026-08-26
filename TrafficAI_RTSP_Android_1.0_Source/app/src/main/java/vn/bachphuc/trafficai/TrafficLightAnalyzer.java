@@ -6,7 +6,8 @@ import android.graphics.RectF;
 
 public final class TrafficLightAnalyzer {
     public Result analyze(Bitmap frame, RectF detection) {
-        RectF box = expandAndClamp(detection, frame.getWidth(), frame.getHeight(), 0.10f);
+        // Chỉ nới rất nhẹ hộp detector. Nới quá rộng làm bảng quảng cáo/đèn hậu lọt vào ROI.
+        RectF box = expandAndClamp(detection, frame.getWidth(), frame.getHeight(), 0.04f);
         int left = Math.max(0, Math.round(box.left));
         int top = Math.max(0, Math.round(box.top));
         int right = Math.min(frame.getWidth(), Math.round(box.right));
@@ -27,6 +28,8 @@ public final class TrafficLightAnalyzer {
         float greenRadius2 = 0f;
         int active = 0;
         int sampled = 0;
+        int darkHousing = 0;
+        int brightNeutral = 0;
         for (int y = top; y < bottom; y += step) {
             float yn = (y - top) / Math.max(1f, bottom - top);
             for (int x = left; x < right; x += step) {
@@ -40,6 +43,8 @@ public final class TrafficLightAnalyzer {
                 int min = Math.min(r, Math.min(g, b));
                 float saturation = max == 0 ? 0f : (max - min) / (float) max;
                 float brightness = max / 255f;
+                if (brightness < 0.32f && saturation < 0.58f) darkHousing++;
+                if (brightness > 0.82f && saturation < 0.16f) brightNeutral++;
                 if (brightness < 0.30f || saturation < 0.25f) continue;
                 // Ưu tiên dải giữa của vỏ đèn để giảm màu từ bảng quảng cáo/nền trời
                 // lọt vào hộp detector. Trọng số vẫn mềm để hỗ trợ cả cụm dọc và ngang.
@@ -78,7 +83,9 @@ public final class TrafficLightAnalyzer {
         }
 
         float total = red + yellow + green;
-        if (active < Math.max(4, sampled / 120) || total < 0.6f) {
+        float activeRatio = active / Math.max(1f, sampled);
+        if (active < Math.max(4, sampled / 120) || total < 0.6f
+                || activeRatio > 0.46f) {
             return new Result(TrafficState.UNKNOWN, 0f);
         }
         TrafficState state = TrafficState.RED;
@@ -113,11 +120,16 @@ public final class TrafficLightAnalyzer {
         float compactness = clamp(1f - variance / .16f, 0f, 1f);
         float position = positionEvidence(state, winnerX, winnerY,
                 Math.max(1f, box.width()), Math.max(1f, box.height()));
-        float confidence = clamp(dominance * 0.50f + coverage * 0.15f
-                + separation * 0.15f + position * 0.10f
-                + compactness * 0.10f, 0f, 1f);
-        if (dominance < 0.45f || separation < 0.11f
-                || compactness < 0.30f || confidence < 0.54f) {
+        float darkRatio = darkHousing / Math.max(1f, sampled);
+        float housingEvidence = clamp((darkRatio - .025f) / .24f, 0f, 1f);
+        float neutralPenalty = clamp(brightNeutral / Math.max(1f, sampled) / .42f,
+                0f, 1f);
+        float confidence = clamp(dominance * 0.38f + coverage * 0.10f
+                + separation * 0.18f + position * 0.12f
+                + compactness * 0.11f + housingEvidence * 0.11f
+                - neutralPenalty * 0.08f, 0f, 1f);
+        if (dominance < 0.47f || separation < 0.14f
+                || compactness < 0.34f || confidence < 0.56f) {
             state = TrafficState.UNKNOWN;
         }
         return new Result(state, confidence);

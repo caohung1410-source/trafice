@@ -2,6 +2,7 @@ import vn.bachphuc.trafficai.CameraRotationPolicy;
 import vn.bachphuc.trafficai.CountdownTracker;
 import vn.bachphuc.trafficai.GeoMath;
 import vn.bachphuc.trafficai.LanePreference;
+import vn.bachphuc.trafficai.MacAddressPolicy;
 import vn.bachphuc.trafficai.NavigationInstruction;
 import vn.bachphuc.trafficai.NavigationSession;
 import vn.bachphuc.trafficai.RecognitionReliability;
@@ -24,6 +25,13 @@ public final class PureLogicSelfTest {
                 "Mật khẩu giữ chỗ phải được URI-encode");
         require(!RtspUrlBuilder.redact(url).contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
                 "Log không được lộ mật khẩu giữ chỗ");
+        require("A0:B1:C2:D3:E4:F5".equals(
+                        MacAddressPolicy.normalize("a0-b1-c2-d3-e4-f5")),
+                "MAC phải được chuẩn hóa thống nhất để ghim camera");
+        require(MacAddressPolicy.isValidDeviceMac("A0:B1:C2:D3:E4:F5")
+                        && !MacAddressPolicy.isValidDeviceMac("FF:FF:FF:FF:FF:FF")
+                        && !MacAddressPolicy.isValidDeviceMac("01:00:5E:00:00:01"),
+                "Chỉ chấp nhận MAC thiết bị unicast hợp lệ");
 
         require(CameraRotationPolicy.previewRotationDegrees(0) == 0f,
                 "Màn hình dọc không được tự xoay thêm 90 độ");
@@ -59,11 +67,19 @@ public final class PureLogicSelfTest {
         require(noIncrease.visibleNumber == 12, "Không được chấp nhận chuỗi tăng bất thường");
 
         tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_700);
-        tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_820);
+        CountdownTracker.Result twoGreen = tracker.update(
+                TrafficState.GREEN, .9f, 8, .9f, t + 1_820);
+        require(twoGreen.state == TrafficState.RED,
+                "Hai frame khác màu chưa được lật trạng thái đã khóa");
         CountdownTracker.Result changed = tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_940);
         require(changed.state == TrafficState.GREEN, "Cần nhận đổi màu đèn");
-        require(changed.visibleNumber != null && changed.visibleNumber == 8,
-                "Đổi màu phải bỏ số cũ và nhận số mới có độ tin cậy cao");
+        require(changed.visibleNumber == null,
+                "Đổi màu phải bỏ số cũ trước khi khóa bộ đếm mới");
+        tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 2_060);
+        CountdownTracker.Result greenCountdown = tracker.update(
+                TrafficState.GREEN, .9f, 8, .9f, t + 2_180);
+        require(greenCountdown.visibleNumber != null && greenCountdown.visibleNumber == 8,
+                "Số mới phải được nhận sau hai frame cùng màu đã khóa");
 
         float rightSignal = RoadGeometryPrior.trafficLightEvidence(.82f, .40f);
         float lowRoadSignal = RoadGeometryPrior.trafficLightEvidence(.50f, .82f);

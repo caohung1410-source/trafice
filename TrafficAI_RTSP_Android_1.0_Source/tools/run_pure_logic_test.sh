@@ -9,6 +9,7 @@ sources=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraRotationPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficState.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RtspUrlBuilder.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/MacAddressPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CountdownTracker.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoadGeometryPrior.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/SignDecisionPolicy.java"

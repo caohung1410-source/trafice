@@ -110,7 +110,7 @@ public final class TrafficCarAppService extends CarAppService {
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI Drive 2.5")
+                    .setTitle("TrafficAI Drive 2.5.1")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
         }

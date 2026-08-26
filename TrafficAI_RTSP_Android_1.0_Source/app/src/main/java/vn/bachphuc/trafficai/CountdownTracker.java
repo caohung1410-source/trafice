@@ -12,6 +12,7 @@ import java.util.Map;
  */
 public final class CountdownTracker {
     private static final long SIGNAL_WINDOW_MS = 1_200L;
+    private static final long LOST_SIGNAL_HOLD_MS = 1_850L;
     private static final long DIGIT_WINDOW_MS = 1_450L;
     private static final long LOST_DIGIT_MS = 1_650L;
     private static final int MIN_DIGIT_VOTES = 2;
@@ -21,6 +22,7 @@ public final class CountdownTracker {
 
     private TrafficState stableState = TrafficState.UNKNOWN;
     private float stableConfidence;
+    private long lastStableEvidenceAt;
     private Integer acceptedNumber;
     private long lastAcceptedAt;
     private long lastVisibleAt;
@@ -32,20 +34,27 @@ public final class CountdownTracker {
             float digitConfidence,
             long nowMs) {
         if (observedState == null) observedState = TrafficState.UNKNOWN;
-        if (stateConfidence >= 0.42f && observedState != TrafficState.UNKNOWN) {
+        if (stateConfidence >= 0.46f && observedState != TrafficState.UNKNOWN) {
             signals.addLast(new SignalSample(observedState, stateConfidence, nowMs));
         }
         trimSignals(nowMs);
         SignalVote vote = voteSignal(nowMs);
         TrafficState votedState = vote.state;
-        boolean stateChanged = votedState != TrafficState.UNKNOWN && votedState != stableState;
+        // Khi đã khóa một màu, phải có ít nhất ba quan sát độc lập mới được đổi màu.
+        // Một frame xanh/đỏ giả từ biển quảng cáo hoặc đèn hậu không thể lật trạng thái.
+        boolean switchConfirmed = stableState == TrafficState.UNKNOWN
+                || votedState == stableState || vote.count >= 3;
+        boolean stateChanged = votedState != TrafficState.UNKNOWN
+                && votedState != stableState && switchConfirmed;
         if (stateChanged) {
             stableState = votedState;
             stableConfidence = vote.confidence;
+            lastStableEvidenceAt = nowMs;
             resetDigits();
         } else if (votedState == stableState && votedState != TrafficState.UNKNOWN) {
             stableConfidence = stableConfidence * 0.36f + vote.confidence * 0.64f;
-        } else if (signals.isEmpty()) {
+            lastStableEvidenceAt = nowMs;
+        } else if (signals.isEmpty() && nowMs - lastStableEvidenceAt > LOST_SIGNAL_HOLD_MS) {
             stableState = TrafficState.UNKNOWN;
             stableConfidence = 0f;
             resetDigits();
@@ -54,7 +63,8 @@ public final class CountdownTracker {
         }
 
         boolean stopped = false;
-        if (visibleNumber != null && digitConfidence >= 0.44f && !stateChanged) {
+        if (visibleNumber != null && digitConfidence >= 0.44f && !stateChanged
+                && observedState == stableState) {
             if (visibleNumber == 0) {
                 resetDigits();
                 stopped = true;
@@ -89,6 +99,7 @@ public final class CountdownTracker {
         signals.clear();
         stableState = TrafficState.UNKNOWN;
         stableConfidence = 0f;
+        lastStableEvidenceAt = 0L;
         resetDigits();
     }
 
@@ -130,8 +141,8 @@ public final class CountdownTracker {
                 * (0.72f + separation * 0.28f);
         boolean enough = bestCount >= 2 && bestWeight >= 0.78f && separation >= 0.18f;
         return enough
-                ? new SignalVote(best, confidence)
-                : new SignalVote(TrafficState.UNKNOWN, 0f);
+                ? new SignalVote(best, confidence, bestCount)
+                : new SignalVote(TrafficState.UNKNOWN, 0f, 0);
     }
 
     private Integer voteDigit(long nowMs) {
@@ -196,10 +207,12 @@ public final class CountdownTracker {
     private static final class SignalVote {
         final TrafficState state;
         final float confidence;
+        final int count;
 
-        SignalVote(TrafficState state, float confidence) {
+        SignalVote(TrafficState state, float confidence, int count) {
             this.state = state;
             this.confidence = confidence;
+            this.count = count;
         }
     }
 

@@ -58,7 +58,15 @@ public final class SignConsensusTracker {
                 bestStable = candidate;
             }
         }
-        if (bestStable != null) stable = bestStable;
+        if (bestStable != null) {
+            // Không nhảy sang một biển/cột khác chỉ vì một track mới cao hơn rất ít.
+            // Giữ track cũ trong lúc xe rung hoặc có nhiều biển đặt gần nhau.
+            boolean sameTrack = stable == null || stable.trackId == bestStable.trackId;
+            boolean oldTrackFresh = stable != null && nowMs - stable.lastSeenAt <= 1_500L;
+            boolean replacementClearlyBetter = stable == null
+                    || bestStable.confidence >= stable.confidence + .12f;
+            if (sameTrack || !oldTrackFresh || replacementClearlyBetter) stable = bestStable;
+        }
         if (stable != null && nowMs - stable.lastSeenAt > STABLE_LOST_MS) stable = null;
         return stable;
     }

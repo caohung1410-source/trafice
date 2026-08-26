@@ -25,6 +25,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioAttributes;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -59,6 +60,8 @@ import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
 
 import org.maplibre.android.MapLibre;
+import org.maplibre.android.annotations.Icon;
+import org.maplibre.android.annotations.IconFactory;
 import org.maplibre.android.annotations.MarkerOptions;
 import org.maplibre.android.annotations.Polyline;
 import org.maplibre.android.annotations.PolylineOptions;
@@ -79,9 +82,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -92,6 +97,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private static final int LOCATION_PERMISSION_REQUEST = 1201;
     private static final int VOICE_SEARCH_REQUEST = 1202;
     private static final int PHONE_CAMERA_PERMISSION_REQUEST = 1203;
+    private static final int NEARBY_WIFI_PERMISSION_REQUEST = 1204;
     private static final long FRAME_INTERVAL_MS = 40L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
@@ -116,7 +122,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private EditText userInput;
     private EditText passwordInput;
     private EditText pathInput;
+    private EditText macInput;
     private CheckBox tcpCheck;
+    private CheckBox autoReconnectCheck;
     private TextView statusText;
     private TextView aiBadge;
     private TextView visionQualityText;
@@ -135,6 +143,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Button mapButton;
     private Button phoneCameraButton;
     private Button rotatePhoneCameraButton;
+    private Button macConnectButton;
     private Button downloadMapButton;
     private LinearLayout navigationPanel;
     private EditText destinationSearchInput;
@@ -165,6 +174,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private final Object phoneCameraLock = new Object();
     private Bitmap captureBitmap;
     private ModelRepository modelRepository;
+    private CameraProfileStore cameraProfileStore;
+    private final MacCameraLocator macCameraLocator = new MacCameraLocator();
     private volatile AiCoordinator aiCoordinator;
     private boolean aiInitializing;
     private TextToSpeech textToSpeech;
@@ -176,6 +187,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final ExecutorService networkWorker = Executors.newSingleThreadExecutor();
+    private final ExecutorService cameraDiscoveryWorker = Executors.newSingleThreadExecutor();
     private final AtomicBoolean frameBusy = new AtomicBoolean(false);
 
     private String lastSpokenSignal = "";
@@ -223,11 +235,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Polyline routePolyline;
     private boolean trafficDataBusy;
     private boolean routeBusy;
+    private boolean cameraReconnectRequested;
+    private boolean macDiscoveryBusy;
     private double lastTrafficFetchLat = Double.NaN;
     private double lastTrafficFetchLon = Double.NaN;
     private long lastTrafficFetchAt;
     private long offRouteSince;
     private long lastReplanAt;
+    private final Map<String, Icon> mapMarkerIcons = new HashMap<>();
 
     private final LocationListener locationListener = this::applyLocation;
 
@@ -276,6 +291,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         bindViews();
 
         modelRepository = new ModelRepository(this);
+        cameraProfileStore = new CameraProfileStore(this);
         landmarkStore = new LandmarkMemoryStore(this);
         mapFeatureStore = new MapFeatureStore(this);
         navigationDataService = new NavigationDataService();
@@ -292,11 +308,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         }
         CarTelemetryStore.updateConnection(false, false);
         restoreProviderSettings();
+        restoreCameraProfile();
         restoreLanePreference();
         updateMapButtonCount();
         checkOfflineMapStatus();
         requestGpsPermission();
         startFramePump();
+        mainHandler.postDelayed(this::autoReconnectSavedCamera, 850L);
     }
 
     private void bindViews() {
@@ -317,7 +335,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         userInput = findViewById(R.id.userInput);
         passwordInput = findViewById(R.id.passwordInput);
         pathInput = findViewById(R.id.pathInput);
+        macInput = findViewById(R.id.macInput);
         tcpCheck = findViewById(R.id.tcpCheck);
+        autoReconnectCheck = findViewById(R.id.autoReconnectCheck);
         statusText = findViewById(R.id.statusText);
         aiBadge = findViewById(R.id.aiBadge);
         visionQualityText = findViewById(R.id.visionQualityText);
@@ -336,6 +356,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         mapButton = findViewById(R.id.mapButton);
         phoneCameraButton = findViewById(R.id.phoneCameraButton);
         rotatePhoneCameraButton = findViewById(R.id.rotatePhoneCameraButton);
+        macConnectButton = findViewById(R.id.macConnectButton);
         downloadMapButton = findViewById(R.id.downloadMapButton);
         navigationPanel = findViewById(R.id.navigationPanel);
         destinationSearchInput = findViewById(R.id.destinationSearchInput);
@@ -404,6 +425,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         disconnect.setOnClickListener(view -> disconnectRtsp());
         phoneCameraButton.setOnClickListener(view -> switchToPhoneCamera());
         rotatePhoneCameraButton.setOnClickListener(view -> rotatePhoneCameraPreview());
+        macConnectButton.setOnClickListener(view -> connectByPinnedMac());
         initAiButton.setOnClickListener(view -> initializeAi());
         mapButton.setOnClickListener(view -> {
             showQuickMenu(false);
@@ -460,6 +482,118 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 "overpass", "https://overpass-api.de/api/interpreter"));
     }
 
+    private void restoreCameraProfile() {
+        if (cameraProfileStore == null) return;
+        CameraProfileStore.Profile profile = cameraProfileStore.load();
+        if (!profile.fullUrl.isEmpty()) fullUrlInput.setText(profile.fullUrl);
+        if (!profile.host.isEmpty()) hostInput.setText(profile.host);
+        if (!profile.port.isEmpty()) portInput.setText(profile.port);
+        if (!profile.username.isEmpty()) userInput.setText(profile.username);
+        if (!profile.password.isEmpty()) passwordInput.setText(profile.password);
+        if (!profile.path.isEmpty()) pathInput.setText(profile.path);
+        if (!profile.pinnedMac.isEmpty()) macInput.setText(profile.pinnedMac);
+        tcpCheck.setChecked(profile.rtpTcp);
+        autoReconnectCheck.setChecked(profile.autoReconnect);
+        cameraReconnectRequested = profile.autoReconnect;
+    }
+
+    private void saveCameraProfile() {
+        if (cameraProfileStore == null) return;
+        cameraProfileStore.save(new CameraProfileStore.Profile(
+                text(fullUrlInput),
+                text(hostInput),
+                text(portInput),
+                text(userInput),
+                passwordInput == null ? "" : passwordInput.getText().toString(),
+                text(pathInput),
+                text(macInput),
+                tcpCheck.isChecked(),
+                cameraReconnectRequested && autoReconnectCheck.isChecked(),
+                phoneCameraMode));
+    }
+
+    private void autoReconnectSavedCamera() {
+        if (destroyed || cameraProfileStore == null || !cameraReconnectRequested
+                || !autoReconnectCheck.isChecked()) return;
+        CameraProfileStore.Profile profile = cameraProfileStore.load();
+        if (profile.phoneCamera) {
+            switchToPhoneCamera();
+        } else if (MacAddressPolicy.isValidDeviceMac(profile.pinnedMac)) {
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    != PackageManager.PERMISSION_GRANTED) {
+                setStatus("Camera đã lưu theo MAC • mở Cài đặt và bấm kết nối MAC "
+                        + "để cấp quyền Thiết bị ở gần lần đầu");
+                return;
+            }
+            connectByPinnedMac();
+        } else if (!profile.fullUrl.isEmpty() || !profile.host.isEmpty()) {
+            connectRtsp();
+        }
+    }
+
+    private void connectByPinnedMac() {
+        String mac = MacAddressPolicy.normalize(text(macInput));
+        if (!MacAddressPolicy.isValidDeviceMac(mac)) {
+            setStatus("Nhập MAC camera theo dạng AA:BB:CC:DD:EE:FF");
+            return;
+        }
+        macInput.setText(mac);
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.NEARBY_WIFI_DEVICES},
+                    NEARBY_WIFI_PERMISSION_REQUEST);
+            return;
+        }
+        startMacDiscovery(mac);
+    }
+
+    private void startMacDiscovery(String mac) {
+        if (macDiscoveryBusy) {
+            setStatus("Đang tìm camera đã ghim MAC, vui lòng chờ");
+            return;
+        }
+        macDiscoveryBusy = true;
+        cameraReconnectRequested = true;
+        autoReconnectCheck.setChecked(true);
+        saveCameraProfile();
+        macConnectButton.setEnabled(false);
+        macConnectButton.setText("ĐANG TÌM MAC…");
+        setStatus("Đang thử IP cũ rồi quét nhanh mạng LAN cho MAC " + mac);
+        final String lastHost = text(hostInput);
+        final int port = parsePort(text(portInput));
+        cameraDiscoveryWorker.execute(() -> {
+            MacCameraLocator.Result result = macCameraLocator.locate(
+                    mac, lastHost, port);
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                macDiscoveryBusy = false;
+                macConnectButton.setEnabled(true);
+                macConnectButton.setText("TÌM IP VÀ KẾT NỐI THEO MAC");
+                if (!result.found()) {
+                    setStatus(result.message);
+                    return;
+                }
+                hostInput.setText(result.host);
+                // URL đầy đủ có thể chứa IP cũ và luôn được ưu tiên bởi RtspUrlBuilder.
+                fullUrlInput.setText("");
+                setStatus(result.message + " • đang mở RTSP");
+                saveCameraProfile();
+                connectRtsp();
+            });
+        });
+    }
+
+    private int parsePort(String value) {
+        try {
+            int parsed = Integer.parseInt(value);
+            return parsed > 0 && parsed <= 65535 ? parsed : 554;
+        } catch (NumberFormatException ignored) {
+            return 554;
+        }
+    }
+
     private void restoreLanePreference() {
         SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
         selectLane(LanePreference.fromStored(preferences.getString("lane", "CENTER")), false);
@@ -502,10 +636,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         bindSettingsDetailRow(R.id.settingsOtherRow, "Cài đặt nâng cao");
 
         findViewById(R.id.settingsAccountRow).setOnClickListener(view -> Toast.makeText(this,
-                "Bản cá nhân hoạt động không cần tài khoản và không đồng bộ mật khẩu camera.",
+                "Bản cá nhân không cần tài khoản. Safety Code camera chỉ được mã hóa bằng "
+                        + "Android Keystore trên điện thoại, không đồng bộ lên máy chủ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
-                "TrafficAI 2.5 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
+                "TrafficAI 2.5.1 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
                 "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
@@ -860,7 +995,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.5.0 • "
+        String metadata = "{\"name\":\"TrafficAI 2.5.1 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -943,8 +1078,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         for (LandmarkMemoryStore.Landmark landmark : landmarks) {
             if (!mappedLandmarkIds.add(landmark.id)) continue;
             String kind = LandmarkHint.TYPE_LIGHT.equals(landmark.type) ? "Đèn" : "Biển";
+            String iconKind = LandmarkHint.TYPE_LIGHT.equals(landmark.type)
+                    ? NavigationDataService.TrafficFeature.LIGHT
+                    : NavigationDataService.TrafficFeature.SIGN;
             baseMap.addMarker(new MarkerOptions()
                     .position(new LatLng(landmark.latitude, landmark.longitude))
+                    .icon(mapMarkerIcon(iconKind, landmark.label))
                     .title(kind + ": " + landmark.label)
                     .snippet("Đã xác nhận " + landmark.confirmations + " lần"));
         }
@@ -970,6 +1109,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             String kind = mapFeatureKind(feature.kind);
             baseMap.addMarker(new MarkerOptions()
                     .position(new LatLng(feature.latitude, feature.longitude))
+                    .icon(mapMarkerIcon(feature.kind, feature.label))
                     .title(kind + ": " + feature.label)
                     .snippet("Dữ liệu OpenStreetMap đã cache trong máy"));
         }
@@ -984,6 +1124,17 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (NavigationDataService.TrafficFeature.RAILWAY.equals(kind)) return "ĐƯỜNG SẮT OSM";
         if (NavigationDataService.TrafficFeature.TOLL.equals(kind)) return "THU PHÍ OSM";
         return "BIỂN OSM";
+    }
+
+    private Icon mapMarkerIcon(String kind, String label) {
+        String key = TrafficMapIconFactory.cacheKey(kind, label);
+        Icon cached = mapMarkerIcons.get(key);
+        if (cached != null) return cached;
+        Icon icon = IconFactory.getInstance(this).fromBitmap(
+                TrafficMapIconFactory.create(
+                        kind, label, getResources().getDisplayMetrics().density));
+        mapMarkerIcons.put(key, icon);
+        return icon;
     }
 
     private void drawCurrentRoute() {
@@ -1128,6 +1279,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void switchToPhoneCamera() {
         phoneCameraMode = true;
         phoneCameraPaused = false;
+        cameraReconnectRequested = true;
+        saveCameraProfile();
         if (mapVisible) toggleMap();
         if (player != null) {
             player.stop();
@@ -1431,6 +1584,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     text(userInput),
                     text(passwordInput),
                     text(pathInput));
+            cameraReconnectRequested = true;
+            saveCameraProfile();
 
             RtspMediaSource.Factory factory = new RtspMediaSource.Factory()
                     .setTimeoutMs(8_000)
@@ -1459,6 +1614,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void disconnectRtsp() {
         phoneCameraMode = false;
         phoneCameraPaused = false;
+        cameraReconnectRequested = false;
         closePhoneCamera();
         player.stop();
         player.clearMediaItems();
@@ -1469,6 +1625,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (aiCoordinator != null) aiCoordinator.reset();
         resetUiResults();
         setStatus("Đã ngắt camera");
+        saveCameraProfile();
     }
 
     private void initializeAi() {
@@ -1516,7 +1673,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.5.0: Map-first UI • Precision Fusion • ưu tiên làn "
+                    setStatus("TrafficAI 2.5.1: Precision Fusion • Camera Lock • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1581,7 +1738,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.5 • PRECISION FUSION • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.5.1 • PRECISION FUSION • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -1771,6 +1928,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 updateCameraSurfaceVisibility();
                 cameraSourceBadge.setText("CAMERA: CHƯA CẤP QUYỀN");
                 setStatus("Cần cấp quyền Camera để dùng camera sau điện thoại");
+            }
+        } else if (requestCode == NEARBY_WIFI_PERMISSION_REQUEST) {
+            if (Build.VERSION.SDK_INT < 33
+                    || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    == PackageManager.PERMISSION_GRANTED) {
+                startMacDiscovery(MacAddressPolicy.normalize(text(macInput)));
+            } else {
+                setStatus("Cần cho phép Thiết bị ở gần để tìm camera theo MAC trong LAN");
             }
         } else if (requestCode == LOCATION_PERMISSION_REQUEST && hasAnyLocationPermission()) {
             startGps();
@@ -2274,6 +2439,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraPaused = true;
         closePhoneCamera();
         saveProviderSettings();
+        saveCameraProfile();
         if (baseMapView != null) baseMapView.onPause();
         super.onPause();
     }
@@ -2306,6 +2472,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         closePhoneCamera();
         stopPhoneCameraThread();
         networkWorker.shutdownNow();
+        cameraDiscoveryWorker.shutdownNow();
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
             locationManager = null;

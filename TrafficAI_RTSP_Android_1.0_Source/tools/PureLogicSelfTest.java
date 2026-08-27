@@ -1,7 +1,10 @@
 import vn.bachphuc.trafficai.CameraRotationPolicy;
 import vn.bachphuc.trafficai.AlertAudioMode;
 import vn.bachphuc.trafficai.CountdownTracker;
+import vn.bachphuc.trafficai.DistanceWarningPolicy;
+import vn.bachphuc.trafficai.DistanceWarningState;
 import vn.bachphuc.trafficai.GeoMath;
+import vn.bachphuc.trafficai.LeadVehicleDistanceEstimator;
 import vn.bachphuc.trafficai.LanePreference;
 import vn.bachphuc.trafficai.MacAddressPolicy;
 import vn.bachphuc.trafficai.NavigationInstruction;
@@ -49,6 +52,53 @@ public final class PureLogicSelfTest {
                         && !MacAddressPolicy.isValidDeviceMac("FF:FF:FF:FF:FF:FF")
                         && !MacAddressPolicy.isValidDeviceMac("01:00:5E:00:00:01"),
                 "Chỉ chấp nhận MAC thiết bị unicast hợp lệ");
+
+        require(DistanceWarningPolicy.vietnamDryMinimumMeters(59) == 0
+                        && DistanceWarningPolicy.vietnamDryMinimumMeters(60) == 35
+                        && DistanceWarningPolicy.vietnamDryMinimumMeters(80) == 55
+                        && DistanceWarningPolicy.vietnamDryMinimumMeters(100) == 70
+                        && DistanceWarningPolicy.vietnamDryMinimumMeters(120) == 100,
+                "Cự ly khô ráo phải theo đúng các mốc 60/80/100/120 km/h Việt Nam");
+        require(DistanceWarningPolicy.evaluate(
+                        35d, Double.NaN, 100, .8f, 4) == DistanceWarningState.DANGER,
+                "Khoảng cách dưới 55% mục tiêu cao tốc phải cảnh báo nguy hiểm");
+        require(DistanceWarningPolicy.evaluate(
+                        60d, Double.NaN, 100, .8f, 4) == DistanceWarningState.CAUTION,
+                "Khoảng cách dưới mục tiêu cao tốc phải nhắc tăng khoảng cách");
+        require(DistanceWarningPolicy.evaluate(
+                        80d, Double.NaN, 100, .8f, 4) == DistanceWarningState.SAFE,
+                "Khoảng cách vượt mục tiêu phải hiển thị tốt");
+        require(DistanceWarningPolicy.evaluate(
+                        35d, 1.5d, 100, .8f, 2) == DistanceWarningState.TRACKING,
+                "Chưa đủ ba quan sát không được phát cảnh báo khoảng cách");
+
+        LeadVehicleDistanceEstimator estimator = new LeadVehicleDistanceEstimator();
+        estimator.configure(true, LeadVehicleDistanceEstimator.Calibration.defaults());
+        LeadVehicleDistanceEstimator.Observation lead =
+                new LeadVehicleDistanceEstimator.Observation(
+                        .42f, .34f, .58f, .46f, 2, .86f);
+        LeadVehicleDistanceEstimator.Observation adjacent =
+                new LeadVehicleDistanceEstimator.Observation(
+                        .72f, .34f, .90f, .55f, 2, .95f);
+        LeadVehicleDistanceEstimator.Result firstDistance = estimator.update(
+                Arrays.asList(lead, adjacent), 100, 10_000L);
+        require(firstDistance.hasLeadVehicle
+                        && firstDistance.distanceMeters > 55d
+                        && firstDistance.distanceMeters < 75d,
+                "Estimator phải chọn xe cùng làn và cho cự ly hợp lý sau hiệu chuẩn mặc định");
+        require(firstDistance.state == DistanceWarningState.TRACKING,
+                "Khung đầu chỉ được theo dõi, chưa cảnh báo");
+        estimator.update(Arrays.asList(new LeadVehicleDistanceEstimator.Observation(
+                .415f, .34f, .585f, .465f, 2, .87f)), 100, 10_500L);
+        LeadVehicleDistanceEstimator.Result stableDistance = estimator.update(
+                Arrays.asList(new LeadVehicleDistanceEstimator.Observation(
+                        .41f, .33f, .59f, .47f, 2, .88f)), 100, 11_000L);
+        require(stableDistance.confirmations >= 3
+                        && stableDistance.state == DistanceWarningState.CAUTION,
+                "Ba khung cùng xe dưới 70 m ở 100 km/h phải nhắc tăng khoảng cách");
+        require(Double.isFinite(stableDistance.headwaySeconds)
+                        && stableDistance.headwaySeconds > 1d,
+                "Khi có GPS phải tính được thời gian bám xe");
 
         require(CameraRotationPolicy.previewRotationDegrees(0) == 0f,
                 "Màn hình dọc không được tự xoay thêm 90 độ");

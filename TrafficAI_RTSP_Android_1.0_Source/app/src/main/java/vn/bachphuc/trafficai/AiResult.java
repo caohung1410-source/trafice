@@ -14,6 +14,14 @@ public final class AiResult {
     public final long signTrackId;
     public final String hazardText;
     public final float hazardConfidence;
+    public final DistanceWarningState distanceState;
+    public final double leadDistanceMeters;
+    public final int requiredDistanceMeters;
+    public final double headwaySeconds;
+    public final double closingSpeedKmh;
+    public final double ttcSeconds;
+    public final float distanceConfidence;
+    public final String leadVehicleLabel;
     public final boolean targetLocked;
     public final long inferenceMs;
     public final String engineStatus;
@@ -28,6 +36,14 @@ public final class AiResult {
             long signTrackId,
             String hazardText,
             float hazardConfidence,
+            DistanceWarningState distanceState,
+            double leadDistanceMeters,
+            int requiredDistanceMeters,
+            double headwaySeconds,
+            double closingSpeedKmh,
+            double ttcSeconds,
+            float distanceConfidence,
+            String leadVehicleLabel,
             boolean targetLocked,
             long inferenceMs,
             String engineStatus) {
@@ -40,6 +56,15 @@ public final class AiResult {
         this.signTrackId = signTrackId;
         this.hazardText = hazardText == null ? "" : hazardText;
         this.hazardConfidence = hazardConfidence;
+        this.distanceState = distanceState == null
+                ? DistanceWarningState.SEARCHING : distanceState;
+        this.leadDistanceMeters = leadDistanceMeters;
+        this.requiredDistanceMeters = Math.max(0, requiredDistanceMeters);
+        this.headwaySeconds = headwaySeconds;
+        this.closingSpeedKmh = closingSpeedKmh;
+        this.ttcSeconds = ttcSeconds;
+        this.distanceConfidence = distanceConfidence;
+        this.leadVehicleLabel = leadVehicleLabel == null ? "" : leadVehicleLabel;
         this.targetLocked = targetLocked;
         this.inferenceMs = inferenceMs;
         this.engineStatus = engineStatus == null ? "" : engineStatus;
@@ -48,6 +73,9 @@ public final class AiResult {
     public static AiResult idle(String status) {
         return new AiResult(
                 Collections.emptyList(), TrafficState.UNKNOWN, 0f,
-                null, "", 0f, -1L, "", 0f, false, 0L, status);
+                null, "", 0f, -1L, "", 0f,
+                DistanceWarningState.SEARCHING, Double.NaN, 0,
+                Double.NaN, 0d, Double.NaN, 0f, "",
+                false, 0L, status);
     }
 }

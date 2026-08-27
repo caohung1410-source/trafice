@@ -1,6 +1,15 @@
-# TrafficAI Drive 2.5.2 • Camera Connect + 3 Audio Modes ARM64
+# TrafficAI Drive 2.6.0 • Distance Warning Beta ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.6.0: cảnh báo khoảng cách xe phía trước
+
+- Model COCO chọn và bám ô tô, xe buýt hoặc xe tải nằm trong hành lang cùng làn; xe ở làn bên cạnh bị giảm ưu tiên.
+- Ước lượng khoảng cách bằng giao điểm đáy hộp xe với mặt đường sau khi hiệu chuẩn chiều cao camera, đường chân trời và góc nhìn dọc.
+- Hiển thị khoảng cách mét, thời gian bám xe, tốc độ áp sát, TTC và cự ly mục tiêu theo các mốc cao tốc Việt Nam trong điều kiện khô ráo.
+- Cảnh báo **Tốt / Nên tăng khoảng cách / Nguy hiểm quá gần** chỉ sau nhiều lần quan sát cùng mục tiêu; hỗ trợ đủ Đọc, Đing đinh và Tắt tiếng.
+- Tăng tần suất quét xe ở tốc độ từ 45 km/h, nhưng vẫn luân phiên model biển Việt Nam để không làm mất chức năng biển/đèn hiện có.
+- Đây là ước lượng camera đơn mắt thử nghiệm, không phải radar, không điều khiển phanh và phải kiểm tra bằng mốc khoảng cách thực tế sau mỗi lần đổi vị trí gá camera.
 
 ## Bản 2.5.2: sửa kết nối camera và ba chế độ âm thanh
 
@@ -122,9 +131,9 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 - Android Auto debug chấp nhận host thử nghiệm khi điện thoại đã bật Developer mode và Unknown sources; màn hình xe chỉ hiển thị dữ liệu, không chiếu video.
 - Giao diện báo đúng FPS kết quả thực tế thay vì FPS ước tính.
 
-Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
+Phần cảnh báo phía trước 2.6.0 có ước lượng khoảng cách và TTC bằng camera đơn mắt. Kết quả có sai số và không thay thế radar, phanh tự động hoặc quan sát của người lái.
 
-Bản APK 2.5.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.6.0 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 

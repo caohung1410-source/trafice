@@ -8,6 +8,9 @@ trap 'rm -rf "$test_dir"' EXIT
 sources=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraRotationPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/AlertAudioMode.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/DistanceWarningState.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/DistanceWarningPolicy.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/LeadVehicleDistanceEstimator.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficState.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RtspUrlBuilder.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MacAddressPolicy.java"

@@ -18,6 +18,9 @@ public final class CarTelemetryStore {
         public final Integer countdown;
         public final String sign;
         public final String hazard;
+        public final double leadDistanceMeters;
+        public final int requiredDistanceMeters;
+        public final String distanceState;
         public final String landmark;
         public final String destination;
         public final String navigationInstruction;
@@ -36,6 +39,9 @@ public final class CarTelemetryStore {
                 Integer countdown,
                 String sign,
                 String hazard,
+                double leadDistanceMeters,
+                int requiredDistanceMeters,
+                String distanceState,
                 String landmark,
                 String destination,
                 String navigationInstruction,
@@ -52,6 +58,9 @@ public final class CarTelemetryStore {
             this.countdown = countdown;
             this.sign = sign;
             this.hazard = hazard;
+            this.leadDistanceMeters = leadDistanceMeters;
+            this.requiredDistanceMeters = requiredDistanceMeters;
+            this.distanceState = distanceState;
             this.landmark = landmark;
             this.destination = destination;
             this.navigationInstruction = navigationInstruction;
@@ -73,6 +82,9 @@ public final class CarTelemetryStore {
     private static volatile Integer countdown;
     private static volatile String sign = "Chưa thấy";
     private static volatile String hazard = "Đang quan sát";
+    private static volatile double leadDistanceMeters = Double.NaN;
+    private static volatile int requiredDistanceMeters;
+    private static volatile String distanceState = "Đang tìm xe";
     private static volatile String landmark = "Chưa có điểm gần";
     private static volatile String destination = "";
     private static volatile String navigationInstruction = "";
@@ -88,7 +100,8 @@ public final class CarTelemetryStore {
     public static State snapshot() {
         return new State(
                 speedKmh, speedLimitKmh, limitSource, lane, light, countdown, sign,
-                hazard, landmark, destination, navigationInstruction,
+                hazard, leadDistanceMeters, requiredDistanceMeters, distanceState,
+                landmark, destination, navigationInstruction,
                 navigationDistanceMeters, navigationActive, targetLocked,
                 cameraConnected, aiReady);
     }
@@ -116,6 +129,9 @@ public final class CarTelemetryStore {
         sign = result.signText == null || result.signText.isEmpty() ? "Chưa thấy" : result.signText;
         hazard = result.hazardText == null || result.hazardText.isEmpty()
                 ? "Đang quan sát" : result.hazardText;
+        leadDistanceMeters = result.leadDistanceMeters;
+        requiredDistanceMeters = result.requiredDistanceMeters;
+        distanceState = result.distanceState.vi;
         targetLocked = result.targetLocked;
         notifyListeners();
     }

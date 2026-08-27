@@ -81,6 +81,7 @@ public final class DetectionOverlayView extends View {
     private int colorFor(Detection.Kind kind) {
         if (kind == Detection.Kind.TRAFFIC_LIGHT) return Color.rgb(70, 225, 130);
         if (kind == Detection.Kind.COUNTDOWN) return Color.rgb(255, 198, 70);
+        if (kind == Detection.Kind.LEAD_VEHICLE) return Color.rgb(255, 176, 48);
         if (kind == Detection.Kind.ROAD_HAZARD) return Color.rgb(255, 92, 72);
         return Color.rgb(75, 160, 255);
     }

@@ -38,6 +38,8 @@ public final class AiCoordinator implements AutoCloseable {
     private final SignConsensusTracker signTracker = new SignConsensusTracker();
     private final TemporalObjectTracker lightTracker = new TemporalObjectTracker();
     private final ForwardHazardAnalyzer hazardAnalyzer = new ForwardHazardAnalyzer();
+    private final LeadVehicleDistanceEstimator distanceEstimator =
+            new LeadVehicleDistanceEstimator();
     private final Set<Integer> sceneClasses = new HashSet<>();
 
     private List<Detection> lastSigns = Collections.emptyList();
@@ -52,6 +54,8 @@ public final class AiCoordinator implements AutoCloseable {
     private String lastVisionMode = "QUÉT";
     private LandmarkHint landmarkHint = LandmarkHint.NONE;
     private LanePreference lanePreference = LanePreference.CENTER;
+    private int vehicleSpeedKmh;
+    private boolean distanceWarningEnabled = true;
 
     public AiCoordinator(File lightModel, File signModel, String[] signLabels) throws Exception {
         // Tận dụng cùng một lượt COCO để thấy đèn và các đối tượng giao thông phía trước.
@@ -70,18 +74,30 @@ public final class AiCoordinator implements AutoCloseable {
         // Model biển VN cũng có lớp đèn đỏ/xanh. Khi chưa có hint, dành 2/3 lượt cho
         // biển để giảm bỏ sót ở xa; COCO vẫn quét mỗi lượt thứ ba và tracker đọc màu
         // trực tiếp trên mọi frame giữa hai lượt detector.
-        boolean scenePhase = hint.expectsLight()
+        boolean distancePriority = distanceWarningEnabled && vehicleSpeedKmh >= 45;
+        boolean scenePhase = distancePriority
+                ? phase % 2 == 0
+                : hint.expectsLight()
                 ? phase % 3 != 2
                 : hint.expectsSign() ? phase % 4 == 0 : phase % 3 == 0;
         SignalObservation observed = observeTrackedLight(frame, nowMs);
         SignConsensusTracker.Stable stableSign;
         ForwardHazardAnalyzer.Result hazard = hazardAnalyzer.current(nowMs);
+        LeadVehicleDistanceEstimator.Result distance =
+                distanceEstimator.current(nowMs, vehicleSpeedKmh);
 
         if (scenePhase) {
             try {
                 ScenePass scene = detectScenePass(frame, nowMs, hint);
                 hazard = hazardAnalyzer.update(scene.roadObjects,
                         frame.getWidth(), frame.getHeight(), nowMs, scene.fullScene);
+                if (scene.fullScene) {
+                    distance = distanceEstimator.update(
+                            distanceObservations(scene.roadObjects,
+                                    frame.getWidth(), frame.getHeight()),
+                            vehicleSpeedKmh,
+                            nowMs);
+                }
                 LightCandidate target = chooseTargetLight(frame, scene.lights, nowMs);
                 if (target != null) {
                     Detection tracked = lightTracker.update(target.detection, nowMs,
@@ -162,6 +178,21 @@ public final class AiCoordinator implements AutoCloseable {
                 observedCountdown, countdownConfidence, nowMs);
         overlay.addAll(lastSigns);
         overlay.addAll(hazard.detections);
+        if (distance.hasLeadVehicle && distance.observation != null) {
+            LeadVehicleDistanceEstimator.Observation lead = distance.observation;
+            String distanceLabel = distance.vehicleLabel + " TRƯỚC • "
+                    + Math.round(distance.distanceMeters) + " m";
+            overlay.add(new Detection(
+                    new RectF(
+                            lead.left * frame.getWidth(),
+                            lead.top * frame.getHeight(),
+                            lead.right * frame.getWidth(),
+                            lead.bottom * frame.getHeight()),
+                    lead.classId,
+                    distanceLabel,
+                    distance.confidence,
+                    Detection.Kind.LEAD_VEHICLE));
+        }
 
         String signText = stableSign == null ? "" : stableSign.detection.label;
         float signConfidence = stableSign == null ? 0f : stableSign.confidence;
@@ -175,6 +206,9 @@ public final class AiCoordinator implements AutoCloseable {
                 + " • " + elapsed + " ms"
                 + " • BIỂN RAW " + lastSignRawCount
                 + " TRACK " + signTracker.activeTrackCount()
+                + (distance.hasLeadVehicle
+                ? " • KC " + Math.round(distance.distanceMeters) + " m"
+                : distanceWarningEnabled ? " • KC ĐANG TÌM" : " • KC TẮT")
                 + (errors > 0 ? " • lỗi " + errors : "");
         return new AiResult(
                 overlay,
@@ -186,6 +220,14 @@ public final class AiCoordinator implements AutoCloseable {
                 signTrackId,
                 hazard.text,
                 hazard.confidence,
+                distance.state,
+                distance.distanceMeters,
+                distance.requiredDistanceMeters,
+                distance.headwaySeconds,
+                distance.closingSpeedKmh,
+                distance.ttcSeconds,
+                distance.confidence,
+                distance.vehicleLabel,
                 targetLocked,
                 elapsed,
                 status);
@@ -316,6 +358,24 @@ public final class AiCoordinator implements AutoCloseable {
         return null;
     }
 
+    private List<LeadVehicleDistanceEstimator.Observation> distanceObservations(
+            List<Detection> detections, int frameWidth, int frameHeight) {
+        List<LeadVehicleDistanceEstimator.Observation> values = new ArrayList<>();
+        float width = Math.max(1f, frameWidth);
+        float height = Math.max(1f, frameHeight);
+        for (Detection detection : detections) {
+            if (detection == null) continue;
+            values.add(new LeadVehicleDistanceEstimator.Observation(
+                    detection.box.left / width,
+                    detection.box.top / height,
+                    detection.box.right / width,
+                    detection.box.bottom / height,
+                    detection.classId,
+                    detection.confidence));
+        }
+        return values;
+    }
+
     private RectF nextSignTile(Bitmap frame) {
         int slot = lanePreference.scanSlot(signTile++);
         float width = frame.getWidth();
@@ -395,6 +455,7 @@ public final class AiCoordinator implements AutoCloseable {
         signTracker.reset();
         lightTracker.reset();
         hazardAnalyzer.reset();
+        distanceEstimator.reset();
         lastSigns = Collections.emptyList();
         lastSignsAt = 0L;
         analysisPhase = 0;
@@ -413,6 +474,17 @@ public final class AiCoordinator implements AutoCloseable {
 
     public synchronized void setLanePreference(LanePreference preference) {
         lanePreference = preference == null ? LanePreference.CENTER : preference;
+    }
+
+    public synchronized void setVehicleSpeedKmh(int speedKmh) {
+        vehicleSpeedKmh = Math.max(0, speedKmh);
+    }
+
+    public synchronized void configureDistanceWarning(
+            boolean enabled,
+            LeadVehicleDistanceEstimator.Calibration calibration) {
+        distanceWarningEnabled = enabled;
+        distanceEstimator.configure(enabled, calibration);
     }
 
     @Override

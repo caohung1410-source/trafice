@@ -109,6 +109,42 @@
                 android:textColor="#FFFFFF"
                 android:textSize="10sp"
                 android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/distanceHud"
+                android:layout_width="154dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_marginStart="14dp"
+                android:layout_marginTop="158dp"
+                android:background="@drawable/hud_capsule"
+                android:elevation="7dp"
+                android:orientation="vertical"
+                android:paddingBottom="7dp"
+                android:paddingEnd="9dp"
+                android:paddingStart="9dp"
+                android:paddingTop="7dp">
+
+                <TextView
+                    android:id="@+id/distanceResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="XE TRƯỚC • — m"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/distanceDetail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="2"
+                    android:text="DISTANCE BETA • ĐANG TÌM"
+                    android:textColor="#CFE7F5"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </FrameLayout>
 
         <FrameLayout
@@ -435,7 +471,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:maxWidth="250dp"
-                android:text="TrafficAI 2.5.2 • sẵn sàng"
+                android:text="TrafficAI 2.6.0 • Distance Warning Beta"
                 android:textColor="#B7F3CB"
                 android:textSize="9sp" />
 
@@ -726,6 +762,19 @@
                         </LinearLayout>
                     </LinearLayout>
 
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingBottom="6dp" android:paddingTop="16dp" android:text="CẢNH BÁO KHOẢNG CÁCH • BETA" android:textColor="#236A9D" android:textSize="12sp" android:textStyle="bold" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/incident_tile_background" android:orientation="vertical" android:padding="10dp">
+                        <CheckBox android:id="@+id/distanceWarningCheck" android:layout_width="match_parent" android:layout_height="44dp" android:checked="true" android:text="Bật bám xe cùng làn và cảnh báo khoảng cách" android:textColor="#303139" android:textSize="11sp" android:textStyle="bold" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Hiệu chuẩn camera đang dùng" android:textColor="#5C5F69" android:textSize="10sp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <EditText android:id="@+id/cameraHeightInput" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:hint="Cao camera (cm)" android:inputType="numberDecimal" android:singleLine="true" android:text="125" android:textColor="#24262D" android:textSize="11sp" />
+                            <EditText android:id="@+id/cameraHorizonInput" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:hint="Chân trời (%)" android:inputType="numberDecimal" android:singleLine="true" android:text="44" android:textColor="#24262D" android:textSize="11sp" />
+                            <EditText android:id="@+id/cameraVerticalFovInput" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:hint="Góc dọc (°)" android:inputType="numberDecimal" android:singleLine="true" android:text="52" android:textColor="#24262D" android:textSize="11sp" />
+                        </LinearLayout>
+                        <Button android:id="@+id/saveDistanceCalibrationButton" android:layout_width="match_parent" android:layout_height="44dp" android:text="LƯU HIỆU CHUẨN KHOẢNG CÁCH" android:textSize="10sp" android:textStyle="bold" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="Camera chỉ ước lượng. Sai số tăng khi đường dốc/cong, camera rung, trời mưa/tối hoặc đổi vị trí gá. Không dùng để điều khiển phanh." android:textColor="#8A4E2B" android:textSize="9sp" />
+                    </LinearLayout>
+
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingBottom="6dp" android:paddingTop="16dp" android:text="ÂM THANH CẢNH BÁO • 3 CHẾ ĐỘ" android:textColor="#236A9D" android:textSize="12sp" android:textStyle="bold" />
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                         <Button android:id="@+id/audioChimeButton" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:text="ĐING ĐINH" android:textSize="9sp" android:textStyle="bold" />
@@ -762,7 +811,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="42dp"
                 android:gravity="center"
-                android:text="Version: 2.5.2 • Camera Connect + 3 Audio Modes"
+                android:text="Version: 2.6.0 • Distance Warning Beta"
                 android:textColor="#60626C"
                 android:textSize="12sp"
                 android:textStyle="bold" />

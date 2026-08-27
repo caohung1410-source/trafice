@@ -95,6 +95,14 @@ public final class TrafficCarAppService extends CarAppService {
                             .addText("Phía trước: " + value.hazard)
                             .build())
                     .addRow(new Row.Builder()
+                            .setTitle(Double.isFinite(value.leadDistanceMeters)
+                                    ? "Xe trước: " + Math.round(value.leadDistanceMeters) + " m"
+                                    : "Khoảng cách: đang tìm xe cùng làn")
+                            .addText(value.distanceState
+                                    + (value.requiredDistanceMeters > 0
+                                    ? " • mục tiêu " + value.requiredDistanceMeters + " m" : ""))
+                            .build())
+                    .addRow(new Row.Builder()
                             .setTitle(value.navigationActive
                                     ? "Dẫn đường: " + shortName(value.destination)
                                     : "Map Memory")
@@ -110,7 +118,7 @@ public final class TrafficCarAppService extends CarAppService {
                             .build());
 
             return new PaneTemplate.Builder(pane.build())
-                    .setTitle("TrafficAI Drive 2.5.2")
+                    .setTitle("TrafficAI Drive 2.6.0")
                     .setHeaderAction(Action.APP_ICON)
                     .build();
         }

@@ -136,6 +136,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private TextView speedResult;
     private TextView speedLimitResult;
     private TextView hazardResult;
+    private TextView distanceResult;
+    private TextView distanceDetail;
     private TextView roadAlertBanner;
     private TextView tripSummaryText;
     private TextView driveModeText;
@@ -148,6 +150,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Button audioVoiceButton;
     private Button audioChimeButton;
     private Button audioMuteButton;
+    private Button saveDistanceCalibrationButton;
+    private CheckBox distanceWarningCheck;
+    private EditText cameraHeightInput;
+    private EditText cameraHorizonInput;
+    private EditText cameraVerticalFovInput;
     private Button downloadMapButton;
     private LinearLayout navigationPanel;
     private EditText destinationSearchInput;
@@ -209,8 +216,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private long lastOverSpeedSpeechAt;
     private long lastHazardSpeechAt;
     private String lastSpokenHazard = "";
+    private long lastDistanceSpeechAt;
+    private DistanceWarningState lastDistanceWarningState =
+            DistanceWarningState.SEARCHING;
     private long lastAiResultAt;
     private float smoothedAiFps;
+    private boolean distanceWarningEnabled = true;
+    private LeadVehicleDistanceEstimator.Calibration distanceCalibration =
+            LeadVehicleDistanceEstimator.Calibration.defaults();
 
     private LocationManager locationManager;
     private Location lastLocation;
@@ -317,6 +330,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         }
         CarTelemetryStore.updateConnection(false, false);
         restoreProviderSettings();
+        restoreDistanceCalibration();
         restoreCameraProfile();
         restoreLanePreference();
         updateMapButtonCount();
@@ -358,6 +372,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         speedResult = findViewById(R.id.speedResult);
         speedLimitResult = findViewById(R.id.speedLimitResult);
         hazardResult = findViewById(R.id.hazardResult);
+        distanceResult = findViewById(R.id.distanceResult);
+        distanceDetail = findViewById(R.id.distanceDetail);
         roadAlertBanner = findViewById(R.id.roadAlertBanner);
         tripSummaryText = findViewById(R.id.tripSummaryText);
         driveModeText = findViewById(R.id.driveModeText);
@@ -370,6 +386,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         audioVoiceButton = findViewById(R.id.audioVoiceButton);
         audioChimeButton = findViewById(R.id.audioChimeButton);
         audioMuteButton = findViewById(R.id.audioMuteButton);
+        saveDistanceCalibrationButton = findViewById(R.id.saveDistanceCalibrationButton);
+        distanceWarningCheck = findViewById(R.id.distanceWarningCheck);
+        cameraHeightInput = findViewById(R.id.cameraHeightInput);
+        cameraHorizonInput = findViewById(R.id.cameraHorizonInput);
+        cameraVerticalFovInput = findViewById(R.id.cameraVerticalFovInput);
         downloadMapButton = findViewById(R.id.downloadMapButton);
         navigationPanel = findViewById(R.id.navigationPanel);
         destinationSearchInput = findViewById(R.id.destinationSearchInput);
@@ -444,6 +465,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 setAudioMode(AlertAudioMode.CHIME, true));
         audioMuteButton.setOnClickListener(view ->
                 setAudioMode(AlertAudioMode.MUTE, true));
+        saveDistanceCalibrationButton.setOnClickListener(view ->
+                saveDistanceCalibration(true));
+        distanceWarningCheck.setOnCheckedChangeListener((button, checked) -> {
+            distanceWarningEnabled = checked;
+            saveDistanceCalibration(false);
+            updateDistanceHud(AiResult.idle(checked
+                    ? "Đang tìm xe phía trước" : "Cảnh báo khoảng cách đã tắt"));
+        });
         initAiButton.setOnClickListener(view -> initializeAi());
         mapButton.setOnClickListener(view -> {
             showQuickMenu(false);
@@ -504,6 +533,68 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 "routing", "https://router.project-osrm.org"));
         overpassUrlInput.setText(preferences.getString(
                 "overpass", "https://overpass-api.de/api/interpreter"));
+    }
+
+    private void restoreDistanceCalibration() {
+        SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
+        double heightCm = clamp(preferences.getFloat("distance_camera_height_cm", 125f),
+                70d, 250d);
+        double horizonPercent = clamp(preferences.getFloat("distance_horizon_percent", 44f),
+                25d, 65d);
+        double verticalFov = clamp(preferences.getFloat("distance_vertical_fov", 52f),
+                30d, 90d);
+        distanceWarningEnabled = preferences.getBoolean("distance_warning_enabled", true);
+        cameraHeightInput.setText(String.format(Locale.US, "%.0f", heightCm));
+        cameraHorizonInput.setText(String.format(Locale.US, "%.1f", horizonPercent));
+        cameraVerticalFovInput.setText(String.format(Locale.US, "%.1f", verticalFov));
+        distanceCalibration = new LeadVehicleDistanceEstimator.Calibration(
+                heightCm / 100d, horizonPercent / 100d, verticalFov);
+        distanceWarningCheck.setChecked(distanceWarningEnabled);
+        applyDistanceConfiguration();
+        updateDistanceHud(AiResult.idle("Distance Warning Beta"));
+    }
+
+    private void saveDistanceCalibration(boolean announce) {
+        double heightCm = parseCalibrationValue(cameraHeightInput, 125d, 70d, 250d);
+        double horizonPercent = parseCalibrationValue(cameraHorizonInput, 44d, 25d, 65d);
+        double verticalFov = parseCalibrationValue(cameraVerticalFovInput, 52d, 30d, 90d);
+        distanceWarningEnabled = distanceWarningCheck.isChecked();
+        cameraHeightInput.setText(String.format(Locale.US, "%.0f", heightCm));
+        cameraHorizonInput.setText(String.format(Locale.US, "%.1f", horizonPercent));
+        cameraVerticalFovInput.setText(String.format(Locale.US, "%.1f", verticalFov));
+        distanceCalibration = new LeadVehicleDistanceEstimator.Calibration(
+                heightCm / 100d, horizonPercent / 100d, verticalFov);
+        getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
+                .putBoolean("distance_warning_enabled", distanceWarningEnabled)
+                .putFloat("distance_camera_height_cm", (float) heightCm)
+                .putFloat("distance_horizon_percent", (float) horizonPercent)
+                .putFloat("distance_vertical_fov", (float) verticalFov)
+                .apply();
+        applyDistanceConfiguration();
+        if (announce) {
+            String message = distanceWarningEnabled
+                    ? "Đã lưu hiệu chuẩn khoảng cách. Hãy kiểm tra bằng các mốc đo thực tế trước khi chạy cao tốc."
+                    : "Đã tắt cảnh báo khoảng cách.";
+            setStatus(message);
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void applyDistanceConfiguration() {
+        AiCoordinator engine = aiCoordinator;
+        if (engine == null) return;
+        engine.configureDistanceWarning(distanceWarningEnabled, distanceCalibration);
+        engine.setVehicleSpeedKmh(currentSpeedKmh);
+    }
+
+    private double parseCalibrationValue(
+            EditText input, double fallback, double minimum, double maximum) {
+        try {
+            String value = text(input).replace(',', '.');
+            return clamp(Double.parseDouble(value), minimum, maximum);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     private void restoreCameraProfile() {
@@ -651,7 +742,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         + "Android Keystore trên điện thoại, không đồng bộ lên máy chủ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
-                "TrafficAI 2.5.2 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
+                "TrafficAI 2.6.0 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
                 "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
@@ -1045,7 +1136,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.5.2 • "
+        String metadata = "{\"name\":\"TrafficAI 2.6.0 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -1753,6 +1844,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiInitializing = false;
                     ready.setLandmarkHint(currentLandmarkHint);
                     ready.setLanePreference(lanePreference);
+                    ready.configureDistanceWarning(
+                            distanceWarningEnabled, distanceCalibration);
+                    ready.setVehicleSpeedKmh(currentSpeedKmh);
                     boolean cameraReady = phoneCameraMode
                             ? phoneCameraDevice != null
                             : player != null && player.getPlaybackState() == Player.STATE_READY;
@@ -1760,7 +1854,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.5.2: Camera Connect • 3 Audio Modes • ưu tiên làn "
+                    setStatus("TrafficAI 2.6.0: Distance Warning Beta • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1825,7 +1919,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.5.2 • PRECISION FUSION • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.6.0 • DISTANCE BETA • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -1866,6 +1960,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 ? "PHÍA TRƯỚC\nĐANG QUAN SÁT"
                 : "CẢNH BÁO\n" + result.hazardText + " "
                 + Math.round(result.hazardConfidence * 100f) + "%");
+        updateDistanceHud(result);
         updateDecisionCardColors(result, mapAgrees);
         speakStableResult(result);
     }
@@ -1884,10 +1979,80 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 ? Color.rgb(18, 91, 83) : Color.rgb(25, 49, 69)));
     }
 
+    private void updateDistanceHud(AiResult result) {
+        if (distanceResult == null || distanceDetail == null) return;
+        if (!distanceWarningEnabled) {
+            distanceResult.setText("KHOẢNG CÁCH • TẮT");
+            distanceDetail.setText("BẬT LẠI TRONG CÀI ĐẶT CẢNH BÁO");
+            distanceResult.setTextColor(Color.WHITE);
+            return;
+        }
+        if (result == null || !Double.isFinite(result.leadDistanceMeters)) {
+            distanceResult.setText("XE TRƯỚC • — m");
+            distanceDetail.setText("DISTANCE BETA • ĐANG TÌM CÙNG LÀN");
+            distanceResult.setTextColor(Color.WHITE);
+            return;
+        }
+
+        distanceResult.setText((result.leadVehicleLabel.isEmpty()
+                ? "XE TRƯỚC" : result.leadVehicleLabel)
+                + " • " + Math.round(result.leadDistanceMeters) + " m");
+        StringBuilder detail = new StringBuilder(result.distanceState.vi);
+        if (Double.isFinite(result.headwaySeconds)) {
+            detail.append(" • ").append(String.format(Locale.US, "%.1f s", result.headwaySeconds));
+        }
+        if (result.requiredDistanceMeters > 0) {
+            detail.append(" • MỤC TIÊU ").append(result.requiredDistanceMeters).append(" m");
+        }
+        if (Double.isFinite(result.ttcSeconds) && result.ttcSeconds <= 9.9d) {
+            detail.append(" • TTC ").append(String.format(Locale.US, "%.1f s", result.ttcSeconds));
+        }
+        distanceDetail.setText(detail.toString());
+
+        int color = result.distanceState == DistanceWarningState.DANGER
+                ? Color.rgb(255, 102, 92)
+                : result.distanceState == DistanceWarningState.CAUTION
+                ? Color.rgb(255, 190, 72)
+                : result.distanceState == DistanceWarningState.SAFE
+                ? Color.rgb(105, 235, 158) : Color.WHITE;
+        distanceResult.setTextColor(color);
+        if (result.distanceState == DistanceWarningState.DANGER) {
+            roadAlertBanner.setText("NGUY HIỂM • XE TRƯỚC "
+                    + Math.round(result.leadDistanceMeters) + " m");
+        } else if (result.distanceState == DistanceWarningState.CAUTION) {
+            roadAlertBanner.setText("HÃY TĂNG KHOẢNG CÁCH • "
+                    + Math.round(result.leadDistanceMeters) + " m");
+        }
+    }
+
     private void speakStableResult(AiResult result) {
         if (audioMode == AlertAudioMode.MUTE
                 || (audioMode == AlertAudioMode.VOICE && !ttsReady)) return;
         long now = SystemClock.elapsedRealtime();
+        if (result.distanceState == DistanceWarningState.SAFE
+                || result.distanceState == DistanceWarningState.SEARCHING) {
+            lastDistanceWarningState = result.distanceState;
+        }
+        boolean distanceDanger = result.distanceState == DistanceWarningState.DANGER;
+        boolean distanceCaution = result.distanceState == DistanceWarningState.CAUTION;
+        long repeatInterval = distanceDanger ? 4_500L : 10_000L;
+        if ((distanceDanger || distanceCaution)
+                && currentSpeedKmh >= 40
+                && result.distanceConfidence >= .56f
+                && (result.distanceState != lastDistanceWarningState
+                || now - lastDistanceSpeechAt >= repeatInterval)) {
+            String phrase = distanceDanger
+                    ? "Nguy hiểm, xe phía trước khoảng "
+                    + Math.round(result.leadDistanceMeters)
+                    + " mét, hãy giảm tốc độ và tăng khoảng cách"
+                    : "Hãy tăng khoảng cách, xe phía trước khoảng "
+                    + Math.round(result.leadDistanceMeters) + " mét";
+            if (audioMode == AlertAudioMode.CHIME) playAlertChime(true);
+            else speak(phrase, TextToSpeech.QUEUE_FLUSH);
+            lastDistanceWarningState = result.distanceState;
+            lastDistanceSpeechAt = now;
+            return;
+        }
         String signal = result.lightState == TrafficState.UNKNOWN
                 || !RecognitionReliability.shouldAnnounceSignal(result.lightConfidence)
                 ? "" : result.lightState.vi;
@@ -2100,6 +2265,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             speedResult.setText("0\nkm/h");
             updateDriveMode();
             CarTelemetryStore.updateSpeed(0);
+            AiCoordinator engine = aiCoordinator;
+            if (engine != null) engine.setVehicleSpeedKmh(0);
             return;
         }
         if (location.hasAccuracy() && location.getAccuracy() > 45f) return;
@@ -2114,6 +2281,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         speedResult.setText(currentSpeedKmh + "\nkm/h");
         updateDriveMode();
         CarTelemetryStore.updateSpeed(currentSpeedKmh);
+        AiCoordinator engine = aiCoordinator;
+        if (engine != null) engine.setVehicleSpeedKmh(currentSpeedKmh);
         evaluateOverSpeed();
     }
 
@@ -2425,6 +2594,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lastCountdownSpeechAt = 0;
         lastSpokenHazard = "";
         lastHazardSpeechAt = 0L;
+        lastDistanceWarningState = DistanceWarningState.SEARCHING;
+        lastDistanceSpeechAt = 0L;
+        updateDistanceHud(AiResult.idle("Đang tìm xe phía trước"));
         lastAiResultAt = 0L;
         smoothedAiFps = 0f;
     }
@@ -2442,6 +2614,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private String text(EditText view) {
         return view.getText() == null ? "" : view.getText().toString().trim();
+    }
+
+    private static double clamp(double value, double minimum, double maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
     }
 
     private void setStatus(String message) {
@@ -2528,6 +2704,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraPaused = true;
         closePhoneCamera();
         saveProviderSettings();
+        saveDistanceCalibration(false);
         saveCameraProfile();
         if (baseMapView != null) baseMapView.onPause();
         super.onPause();

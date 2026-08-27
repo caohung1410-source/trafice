@@ -6,6 +6,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -21,6 +22,8 @@ public final class ModelRepository {
             "https://huggingface.co/webnn/yolo11n/resolve/main/onnx/yolo11n.onnx";
     public static final String SIGN_MODEL_URL =
             "https://huggingface.co/star092304/traffic-sign-detection-vietnam-yolo/resolve/main/best.onnx";
+    private static final String LIGHT_MODEL_ASSET = "models/yolo11n_coco.onnx";
+    private static final String SIGN_MODEL_ASSET = "models/traffic_sign_vietnam_yolo11s.onnx";
 
     private static final long MIN_LIGHT_BYTES = 3_000_000L;
     private static final long MIN_SIGN_BYTES = 30_000_000L;
@@ -48,12 +51,20 @@ public final class ModelRepository {
 
     public void ensureModels(ProgressListener listener) throws Exception {
         if (!valid(lightModel(), MIN_LIGHT_BYTES)) {
-            download("AI đèn tín hiệu", LIGHT_MODEL_URL, lightModel(), MIN_LIGHT_BYTES, 0, 28, listener);
+            if (!installBundled("AI đèn tín hiệu", LIGHT_MODEL_ASSET,
+                    lightModel(), MIN_LIGHT_BYTES, 0, 28, listener)) {
+                download("AI đèn tín hiệu", LIGHT_MODEL_URL,
+                        lightModel(), MIN_LIGHT_BYTES, 0, 28, listener);
+            }
         } else {
             listener.onProgress("AI đèn đã có", 28);
         }
         if (!valid(signModel(), MIN_SIGN_BYTES)) {
-            download("AI biển báo Việt Nam", SIGN_MODEL_URL, signModel(), MIN_SIGN_BYTES, 28, 98, listener);
+            if (!installBundled("AI biển báo Việt Nam", SIGN_MODEL_ASSET,
+                    signModel(), MIN_SIGN_BYTES, 28, 98, listener)) {
+                download("AI biển báo Việt Nam", SIGN_MODEL_URL,
+                        signModel(), MIN_SIGN_BYTES, 28, 98, listener);
+            }
         } else {
             listener.onProgress("AI biển báo đã có", 98);
         }
@@ -75,6 +86,45 @@ public final class ModelRepository {
             throw new IllegalStateException("Danh sách biển phải có đúng 82 lớp, hiện có " + labels.size());
         }
         return labels.toArray(new String[0]);
+    }
+
+    private boolean installBundled(
+            String name,
+            String assetPath,
+            File destination,
+            long minimumBytes,
+            int progressStart,
+            int progressEnd,
+            ProgressListener listener) throws Exception {
+        File temp = new File(destination.getParentFile(), destination.getName() + ".asset.part");
+        if (temp.exists()) temp.delete();
+        try (InputStream input = new BufferedInputStream(context.getAssets().open(assetPath));
+             FileOutputStream output = new FileOutputStream(temp)) {
+            listener.onProgress(name + " • đang chép model có sẵn", progressStart);
+            long received = 0L;
+            byte[] buffer = new byte[128 * 1024];
+            int count;
+            while ((count = input.read(buffer)) >= 0) {
+                if (count == 0) continue;
+                output.write(buffer, 0, count);
+                received += count;
+                int progress = Math.min(progressEnd - 1,
+                        progressStart + (int) ((progressEnd - progressStart)
+                                * Math.min(received, minimumBytes) / minimumBytes));
+                listener.onProgress(name + " • " + (received / 1_048_576L) + " MB", progress);
+            }
+            output.getFD().sync();
+        } catch (IOException missingAsset) {
+            temp.delete();
+            return false;
+        }
+        if (!valid(temp, minimumBytes)) {
+            temp.delete();
+            throw new IllegalStateException(name + " trong APK bị thiếu dữ liệu");
+        }
+        Files.move(temp.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        listener.onProgress(name + " • offline OK", progressEnd);
+        return true;
     }
 
     private void download(

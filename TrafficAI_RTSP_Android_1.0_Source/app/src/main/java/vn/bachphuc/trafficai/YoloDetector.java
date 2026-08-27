@@ -32,6 +32,7 @@ public final class YoloDetector implements AutoCloseable {
     private static final int MAX_RAW_CANDIDATES = 1_000;
 
     private final OrtEnvironment environment;
+    private final OrtSession.SessionOptions sessionOptions;
     private final OrtSession session;
     private final String inputName;
     private final String[] labels;
@@ -47,13 +48,43 @@ public final class YoloDetector implements AutoCloseable {
 
     public YoloDetector(File model, String[] labels, Detection.Kind kind) throws OrtException {
         this.environment = OrtEnvironment.getEnvironment();
-        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-        options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-        options.setIntraOpNumThreads(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() - 1)));
-        this.session = environment.createSession(model.getAbsolutePath(), options);
+        OrtSession.SessionOptions selectedOptions = null;
+        OrtSession selectedSession;
+        try {
+            selectedOptions = createOptions(true);
+            selectedSession = environment.createSession(model.getAbsolutePath(), selectedOptions);
+        } catch (OrtException acceleratedFailure) {
+            if (selectedOptions != null) {
+                try {
+                    selectedOptions.close();
+                } catch (Throwable ignored) {
+                }
+            }
+            selectedOptions = createOptions(false);
+            selectedSession = environment.createSession(model.getAbsolutePath(), selectedOptions);
+        }
+        this.sessionOptions = selectedOptions;
+        this.session = selectedSession;
         this.inputName = session.getInputNames().iterator().next();
         this.labels = labels.clone();
         this.kind = kind;
+    }
+
+    private static OrtSession.SessionOptions createOptions(boolean useXnnpack) throws OrtException {
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        options.setMemoryPatternOptimization(true);
+        int threads = Math.max(2,
+                Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
+        if (useXnnpack) {
+            options.setIntraOpNumThreads(1);
+            Map<String, String> providerOptions = new HashMap<>();
+            providerOptions.put("intra_op_num_threads", Integer.toString(threads));
+            options.addXnnpack(providerOptions);
+        } else {
+            options.setIntraOpNumThreads(threads);
+        }
+        return options;
     }
 
     public synchronized List<Detection> detect(
@@ -220,7 +251,9 @@ public final class YoloDetector implements AutoCloseable {
         for (Detection candidate : sorted) {
             boolean overlap = false;
             for (Detection previous : kept) {
-                if (candidate.classId == previous.classId && iou(candidate.box, previous.box) > iouThreshold) {
+                float overlapRatio = iou(candidate.box, previous.box);
+                if ((candidate.classId == previous.classId && overlapRatio > iouThreshold)
+                        || (candidate.classId != previous.classId && overlapRatio > .72f)) {
                     overlap = true;
                     break;
                 }
@@ -256,8 +289,12 @@ public final class YoloDetector implements AutoCloseable {
 
     @Override
     public synchronized void close() throws OrtException {
-        session.close();
-        letterbox.recycle();
+        try {
+            session.close();
+        } finally {
+            sessionOptions.close();
+            letterbox.recycle();
+        }
     }
 
     private static final class Transform {

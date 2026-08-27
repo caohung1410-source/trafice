@@ -1,14 +1,74 @@
+import vn.bachphuc.trafficai.CameraRotationPolicy;
+import vn.bachphuc.trafficai.AlertAudioMode;
 import vn.bachphuc.trafficai.CountdownTracker;
+import vn.bachphuc.trafficai.GeoMath;
+import vn.bachphuc.trafficai.LanePreference;
+import vn.bachphuc.trafficai.MacAddressPolicy;
+import vn.bachphuc.trafficai.NavigationInstruction;
+import vn.bachphuc.trafficai.NavigationSession;
+import vn.bachphuc.trafficai.RecognitionReliability;
+import vn.bachphuc.trafficai.RoadGeometryPrior;
+import vn.bachphuc.trafficai.RoutePlan;
 import vn.bachphuc.trafficai.RtspUrlBuilder;
+import vn.bachphuc.trafficai.SignDecisionPolicy;
+import vn.bachphuc.trafficai.SignTrackMath;
+import vn.bachphuc.trafficai.SpeedSignPolicy;
 import vn.bachphuc.trafficai.TrafficState;
+
+import java.util.Arrays;
 
 public final class PureLogicSelfTest {
     public static void main(String[] args) {
         String url = RtspUrlBuilder.build(
-                "", "192.168.1.108", "554", "admin", "A b@1",
+                "", "192.168.1.108", "554", "admin", "DUMMY PASSWORD WITH SPACE",
                 "/cam/realmonitor?channel=1&subtype=1");
-        require(url.contains("A%20b%401"), "Mật khẩu phải được URI-encode");
-        require(!RtspUrlBuilder.redact(url).contains("A%20b%401"), "Log không được lộ mật khẩu");
+        require(url.contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
+                "Mật khẩu giữ chỗ phải được URI-encode");
+        require(!RtspUrlBuilder.redact(url).contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
+                "Log không được lộ mật khẩu giữ chỗ");
+        String embeddedPortUrl = RtspUrlBuilder.build(
+                "", "192.168.1.108:8554", "554", "admin", "DUMMY",
+                "/cam/realmonitor?channel=1&subtype=0");
+        require(embeddedPortUrl.contains("@192.168.1.108:8554/"),
+                "IP có sẵn port không được ghép thành hai port");
+        require(RtspUrlBuilder.isImouMainStream(embeddedPortUrl)
+                        && RtspUrlBuilder.withImouSubtype(embeddedPortUrl, 1)
+                        .contains("subtype=1"),
+                "Kết nối lỗi luồng chính phải chuyển được sang IMOU SUB 1");
+        require(AlertAudioMode.VOICE.next() == AlertAudioMode.CHIME
+                        && AlertAudioMode.CHIME.next() == AlertAudioMode.MUTE
+                        && AlertAudioMode.MUTE.next() == AlertAudioMode.VOICE,
+                "Nút loa phải chuyển đủ Đọc / Đing đinh / Tắt tiếng");
+        require(AlertAudioMode.fromStored("chime", true) == AlertAudioMode.CHIME
+                        && AlertAudioMode.fromStored("", false) == AlertAudioMode.MUTE,
+                "Chế độ âm thanh phải khôi phục đúng và tương thích dữ liệu cũ");
+        require("A0:B1:C2:D3:E4:F5".equals(
+                        MacAddressPolicy.normalize("a0-b1-c2-d3-e4-f5")),
+                "MAC phải được chuẩn hóa thống nhất để ghim camera");
+        require(MacAddressPolicy.isValidDeviceMac("A0:B1:C2:D3:E4:F5")
+                        && !MacAddressPolicy.isValidDeviceMac("FF:FF:FF:FF:FF:FF")
+                        && !MacAddressPolicy.isValidDeviceMac("01:00:5E:00:00:01"),
+                "Chỉ chấp nhận MAC thiết bị unicast hợp lệ");
+
+        require(CameraRotationPolicy.previewRotationDegrees(0) == 0f,
+                "Màn hình dọc không được tự xoay thêm 90 độ");
+        require(CameraRotationPolicy.previewRotationDegrees(1) == -90f,
+                "Landscape 90 phải bù preview theo chiều âm");
+        require(CameraRotationPolicy.previewRotationDegrees(2) == 180f,
+                "Màn hình lộn ngược phải bù 180 độ");
+        require(CameraRotationPolicy.previewRotationDegrees(3) == 90f,
+                "Landscape 270 phải bù preview theo chiều dương");
+        require(CameraRotationPolicy.swapsBufferDimensions(1)
+                        && !CameraRotationPolicy.swapsBufferDimensions(0),
+                "Chỉ landscape mới đổi chiều rộng/cao của buffer");
+        require(CameraRotationPolicy.isQuarterTurnDegrees(-90)
+                        && !CameraRotationPolicy.isQuarterTurnDegrees(180),
+                "Tổng góc 90/270 mới được đổi chiều buffer");
+        require(CameraRotationPolicy.normalizeDegrees(-90) == 270,
+                "Góc âm phải chuẩn hóa đúng để ghép xoay tự động và thủ công");
+        require(CameraRotationPolicy.normalizeManualDegrees(450) == 90
+                        && CameraRotationPolicy.normalizeManualDegrees(-90) == 270,
+                "Bù xoay thủ công phải luôn nằm trong 0/90/180/270");
 
         CountdownTracker tracker = new CountdownTracker();
         long t = 1_000;
@@ -24,10 +84,152 @@ public final class PureLogicSelfTest {
         require(noIncrease.visibleNumber == 12, "Không được chấp nhận chuỗi tăng bất thường");
 
         tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_700);
-        tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_820);
+        CountdownTracker.Result twoGreen = tracker.update(
+                TrafficState.GREEN, .9f, 8, .9f, t + 1_820);
+        require(twoGreen.state == TrafficState.RED,
+                "Hai frame khác màu chưa được lật trạng thái đã khóa");
         CountdownTracker.Result changed = tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 1_940);
         require(changed.state == TrafficState.GREEN, "Cần nhận đổi màu đèn");
-        require(changed.visibleNumber == null, "Đổi màu phải reset countdown cũ");
+        require(changed.visibleNumber == null,
+                "Đổi màu phải bỏ số cũ trước khi khóa bộ đếm mới");
+        tracker.update(TrafficState.GREEN, .9f, 8, .9f, t + 2_060);
+        CountdownTracker.Result greenCountdown = tracker.update(
+                TrafficState.GREEN, .9f, 8, .9f, t + 2_180);
+        require(greenCountdown.visibleNumber != null && greenCountdown.visibleNumber == 8,
+                "Số mới phải được nhận sau hai frame cùng màu đã khóa");
+
+        float rightSignal = RoadGeometryPrior.trafficLightEvidence(.82f, .40f);
+        float lowRoadSignal = RoadGeometryPrior.trafficLightEvidence(.50f, .82f);
+        require(rightSignal > lowRoadSignal,
+                "Đèn trên cột bên phải phải được ưu tiên hơn vùng thấp giữa làn xe");
+        require(RoadGeometryPrior.trafficLightEvidence(.50f, .18f) > .80f,
+                "Đèn treo ngang phía trên giữa ảnh phải được giữ lại");
+        require(RoadGeometryPrior.trafficSignEvidence(.82f, .48f)
+                        > RoadGeometryPrior.trafficSignEvidence(.50f, .86f),
+                "Biển bên phải ở cao độ hợp lý phải được ưu tiên");
+        require(RoadGeometryPrior.trafficSignEvidence(.18f, .38f) > .30f,
+                "Không được cắt cứng biển nhắc lại bên trái");
+        require(RoadGeometryPrior.adjustConfidence(.20f, 1f) <= .20f,
+                "Prior không được tự nâng phát hiện yếu");
+        require(RoadGeometryPrior.adjustConfidence(.20f, .22f) >= .184f,
+                "Prior không được làm mất biển thật ở giữa hoặc bên trái");
+        require(RoadGeometryPrior.travelDirectionEvidence(.52f, .20f)
+                        > RoadGeometryPrior.travelDirectionEvidence(.04f, .70f),
+                "Đèn cao theo hướng xe phải ưu tiên hơn đèn thấp ngoài luồng giao thông");
+
+        require(!SignDecisionPolicy.evaluate(2, 2, .34f, .55f).confirmed,
+                "Hai phát hiện yếu chưa được đọc thành biển thật");
+        require(SignDecisionPolicy.evaluate(2, 2, .46f, .70f).confirmed,
+                "Biển rõ phải xác nhận được sau hai khung");
+        require(!SignDecisionPolicy.evaluate(2, 4, .80f, .90f).confirmed,
+                "Hai lớp hòa phiếu không được xác nhận chỉ vì độ tin cậy cao");
+        require(SignDecisionPolicy.evaluate(3, 4, .24f, .31f).confirmed,
+                "Ba phiếu cùng lớp phải giữ được biển xa");
+        require(!SignDecisionPolicy.evaluate(3, 4, .19f, .25f).confirmed,
+                "Ba khung rất yếu chưa đủ để đọc biển");
+        require(SignDecisionPolicy.evaluate(4, 5, .20f, .25f).confirmed,
+                "Bốn phiếu cùng track phải giữ được biển rất xa");
+        require(!SignDecisionPolicy.evaluate(2, 5, .80f, .90f).confirmed,
+                "Không xác nhận lớp chỉ chiếm thiểu số trên một track");
+        require(!RecognitionReliability.shouldAnnounceSign(.49f, false)
+                        && RecognitionReliability.shouldAnnounceSign(.53f, false),
+                "TTS chỉ được đọc biển đã vượt cổng độ tin cậy");
+        require(RecognitionReliability.labelsAgree(
+                        "Giới hạn tốc độ 50 km/h", "Biển giới hạn tốc độ 50"),
+                "Nhãn AI và Map Memory cùng tốc độ phải được đối chiếu thành công");
+        require(!RecognitionReliability.labelsAgree(
+                        "Giới hạn tốc độ 50", "Giới hạn tốc độ 60"),
+                "Hai biển tốc độ khác số không được coi là trùng Map Memory");
+        require(!RecognitionReliability.shouldApplySpeedLimit(.50f, false)
+                        && RecognitionReliability.shouldApplySpeedLimit(.61f, false),
+                "Giới hạn tốc độ không được đổi theo một kết quả trung bình chưa đủ mạnh");
+        require(RecognitionReliability.qualityLevel(
+                        RecognitionReliability.qualityScore(.82f, 0f, true, true, 250L))
+                        == RecognitionReliability.Level.CONFIRMED,
+                "HUD phải báo đã xác nhận khi đèn khóa, có số và bằng chứng mạnh");
+        require(SignTrackMath.affinity(
+                100f, 100f, 120f, 120f,
+                108f, 102f, 128f, 122f) > .20f,
+                "Cùng biển dịch chuyển nhẹ phải được nối track");
+        require(SignTrackMath.affinity(
+                100f, 100f, 120f, 120f,
+                500f, 100f, 520f, 120f) < .20f,
+                "Hai biển cùng cỡ nhưng ở xa không được nhập chung track");
+
+        SpeedSignPolicy.Parsed speed50 = SpeedSignPolicy.parse(
+                "Giới hạn tốc độ 50 km/h");
+        require(speed50 != null && !speed50.endsLimit && speed50.limitKmh == 50,
+                "Biển 50 phải cập nhật giới hạn tốc độ AI");
+        SpeedSignPolicy.Parsed end50 = SpeedSignPolicy.parse(
+                "Hết giới hạn tốc độ 50 km/h");
+        require(end50 != null && end50.endsLimit,
+                "Biển hết giới hạn phải xóa giới hạn AI cũ");
+        require(SpeedSignPolicy.parse("Cấm rẽ trái") == null,
+                "Biển không liên quan không được đổi giới hạn tốc độ");
+        require(SpeedSignPolicy.parse("Giới hạn tốc độ 180 km/h") == null,
+                "Giới hạn ngoài phạm vi hợp lệ phải bị từ chối");
+
+        require(LanePreference.LEFT.scanSlot(0) == -1
+                        && LanePreference.LEFT.scanSlot(1) == -1,
+                "Chọn làn trái phải ưu tiên quét phía trái hai lượt đầu");
+        require(LanePreference.RIGHT.scanSlot(0) == 1
+                        && LanePreference.RIGHT.scanSlot(4) == 2,
+                "Chọn làn phải vẫn phải quay lại quét toàn cảnh");
+        require(LanePreference.CENTER.visualEvidence(.50f)
+                        > LanePreference.CENTER.visualEvidence(.05f),
+                "Cụm đèn giữa ảnh phải phù hợp hơn khi chọn làn giữa");
+        require(LanePreference.fromStored("không hợp lệ") == LanePreference.CENTER,
+                "Làn lưu sai phải quay về làn giữa an toàn");
+
+        require(GeoMath.distanceMeters(13.97609, 108.00695,
+                13.97609, 108.00695) < .01d, "Cùng tọa độ phải có khoảng cách bằng 0");
+        double nearby = GeoMath.distanceMeters(13.97609, 108.00695,
+                13.97709, 108.00695);
+        require(nearby > 105d && nearby < 116d,
+                "Chênh 0,001 độ vĩ phải xấp xỉ 111 m");
+        require(Math.abs(GeoMath.headingDifference(350d, 10d) - 20d) < .001d,
+                "So hướng phải xử lý đúng qua mốc 0/360 độ");
+        require(GeoMath.headingDifference(
+                GeoMath.bearingDegrees(13.97609, 108.00695, 13.97709, 108.00695), 0d) < 1d,
+                "Điểm tăng vĩ độ phải nằm gần hướng Bắc để lọc cảnh báo phía trước");
+        require(GeoMath.headingDifference(
+                GeoMath.averageHeading(350d, 10d, .5d), 0d) < .001d,
+                "Trung bình hướng 350/10 phải gần hướng Bắc");
+        require(GeoMath.distanceToSegmentMeters(
+                13.97659, 108.00696,
+                13.97609, 108.00695,
+                13.97709, 108.00695) < 3d,
+                "Điểm nằm sát đoạn tuyến phải có khoảng cách rất nhỏ");
+
+        String turnRight = NavigationInstruction.fromOsrm(
+                "turn", "right", "Lê Lợi", 0);
+        require(turnRight.contains("Rẽ phải") && turnRight.contains("Lê Lợi"),
+                "Maneuver OSRM phải đổi thành câu rẽ tiếng Việt");
+        require(NavigationInstruction.withDistance(turnRight, 120d).contains("120 mét"),
+                "Câu TTS phải kèm khoảng cách tới chỗ rẽ");
+
+        RoutePlan route = new RoutePlan(
+                "Quảng trường",
+                13.97809, 108.00695,
+                222d, 60d,
+                Arrays.asList(
+                        new RoutePlan.Point(13.97609, 108.00695),
+                        new RoutePlan.Point(13.97709, 108.00695),
+                        new RoutePlan.Point(13.97809, 108.00695)),
+                Arrays.asList(
+                        new RoutePlan.Step("Bắt đầu", 13.97609, 108.00695, 111d),
+                        new RoutePlan.Step("Rẽ phải", 13.97709, 108.00695, 111d),
+                        new RoutePlan.Step("Đã đến", 13.97809, 108.00695, 0d)));
+        NavigationSession navigation = new NavigationSession();
+        navigation.setPlan(route);
+        NavigationSession.Guidance firstGuide = navigation.update(13.97609, 108.00695);
+        require(firstGuide.active && firstGuide.instruction.contains("Rẽ phải"),
+                "Điều hướng phải bỏ bước depart và chỉ bước rẽ kế tiếp");
+        NavigationSession.Guidance advanced = navigation.update(13.97708, 108.00695);
+        require(advanced.instruction.contains("Đã đến"),
+                "Qua vị trí rẽ phải chuyển sang bước tiếp theo");
+        NavigationSession.Guidance arrived = navigation.update(13.97809, 108.00695);
+        require(arrived.arrived, "Đến trong 32 m phải kết thúc tuyến");
 
         System.out.println("PureLogicSelfTest: PASS");
     }

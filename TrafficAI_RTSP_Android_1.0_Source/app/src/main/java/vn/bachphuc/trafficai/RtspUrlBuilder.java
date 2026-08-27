@@ -21,9 +21,8 @@ public final class RtspUrlBuilder {
             return direct;
         }
 
-        String cleanHost = safe(host).trim()
-                .replaceFirst("(?i)^rtsps?://", "")
-                .replaceAll("/+$", "");
+        HostPort cleanAddress = normalizeHost(host, portText);
+        String cleanHost = cleanAddress.host;
         String cleanUser = safe(username).trim();
         String cleanPass = safe(password);
         if (cleanHost.isEmpty()) throw new IllegalArgumentException("Thiếu IP/tên miền camera");
@@ -32,7 +31,7 @@ public final class RtspUrlBuilder {
 
         int port;
         try {
-            port = Integer.parseInt(safe(portText).trim());
+            port = Integer.parseInt(cleanAddress.port);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Port RTSP không hợp lệ");
         }
@@ -70,11 +69,50 @@ public final class RtspUrlBuilder {
         return value.replaceFirst("(?i)^(rtsps?://)([^/@]+)@", "$1***:***@");
     }
 
+    public static boolean isImouMainStream(String url) {
+        return safe(url).matches("(?is).*([?&])subtype=0(?:&.*)?$");
+    }
+
+    public static String withImouSubtype(String url, int subtype) {
+        String value = safe(url);
+        if (subtype < 0 || subtype > 1) return value;
+        return value.replaceFirst("(?i)([?&]subtype=)\\d+", "$1" + subtype);
+    }
+
     private static String encodeUserInfo(String value) {
         try {
             return URLEncoder.encode(value, "UTF-8").replace("+", "%20");
         } catch (UnsupportedEncodingException impossible) {
             throw new IllegalStateException("Thiết bị không hỗ trợ UTF-8", impossible);
+        }
+    }
+
+    private static HostPort normalizeHost(String host, String portText) {
+        String value = safe(host).trim().replaceFirst("(?i)^rtsps?://", "");
+        int userInfo = value.lastIndexOf('@');
+        if (userInfo >= 0) value = value.substring(userInfo + 1);
+        int path = value.indexOf('/');
+        if (path >= 0) value = value.substring(0, path);
+        value = value.replaceAll("/+$", "");
+        String port = safe(portText).trim();
+        int colon = value.lastIndexOf(':');
+        if (colon > 0 && value.indexOf(':') == colon) {
+            String embeddedPort = value.substring(colon + 1);
+            if (embeddedPort.matches("\\d{1,5}")) {
+                value = value.substring(0, colon);
+                port = embeddedPort;
+            }
+        }
+        return new HostPort(value, port);
+    }
+
+    private static final class HostPort {
+        final String host;
+        final String port;
+
+        HostPort(String host, String port) {
+            this.host = host;
+            this.port = port;
         }
     }
 

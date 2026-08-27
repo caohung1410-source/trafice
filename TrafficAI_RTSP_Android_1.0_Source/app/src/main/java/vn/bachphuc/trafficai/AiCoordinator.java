@@ -11,7 +11,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/** Điều phối thị giác 2.5: fusion nhiều khung, phóng vùng biển xa và prior tọa độ/làn xe. */
 public final class AiCoordinator implements AutoCloseable {
+    private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
+    private static final int SIGN_GREEN_LIGHT_CLASS = 54;
+    private static final int SIGN_RED_LIGHT_CLASS = 55;
     private static final String[] COCO_LABELS = {
             "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
             "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird",
@@ -26,22 +30,37 @@ public final class AiCoordinator implements AutoCloseable {
             "hair drier", "toothbrush"
     };
 
-    private final YoloDetector lightDetector;
+    private final YoloDetector sceneDetector;
     private final YoloDetector signDetector;
     private final TrafficLightAnalyzer lightAnalyzer = new TrafficLightAnalyzer();
     private final SevenSegmentReader sevenSegmentReader = new SevenSegmentReader();
     private final CountdownTracker countdownTracker = new CountdownTracker();
     private final SignConsensusTracker signTracker = new SignConsensusTracker();
-    private final Set<Integer> trafficLightClass = new HashSet<>();
+    private final TemporalObjectTracker lightTracker = new TemporalObjectTracker();
+    private final ForwardHazardAnalyzer hazardAnalyzer = new ForwardHazardAnalyzer();
+    private final LeadVehicleDistanceEstimator distanceEstimator =
+            new LeadVehicleDistanceEstimator();
+    private final Set<Integer> sceneClasses = new HashSet<>();
 
     private List<Detection> lastSigns = Collections.emptyList();
-    private int frameCounter;
+    private long lastSignsAt;
+    private int analysisPhase;
+    private int scenePassCounter;
+    private int signPassCounter;
     private int signTile;
+    private int lightTile;
     private int errors;
+    private int lastSignRawCount;
+    private String lastVisionMode = "QUÉT";
+    private LandmarkHint landmarkHint = LandmarkHint.NONE;
+    private LanePreference lanePreference = LanePreference.CENTER;
+    private int vehicleSpeedKmh;
+    private boolean distanceWarningEnabled = true;
 
     public AiCoordinator(File lightModel, File signModel, String[] signLabels) throws Exception {
-        trafficLightClass.add(9);
-        lightDetector = new YoloDetector(
+        // Tận dụng cùng một lượt COCO để thấy đèn và các đối tượng giao thông phía trước.
+        Collections.addAll(sceneClasses, 0, 1, 2, 3, 5, 7, 9);
+        sceneDetector = new YoloDetector(
                 lightModel, COCO_LABELS, Detection.Kind.TRAFFIC_LIGHT);
         signDetector = new YoloDetector(
                 signModel, signLabels, Detection.Kind.TRAFFIC_SIGN);
@@ -50,29 +69,100 @@ public final class AiCoordinator implements AutoCloseable {
     public synchronized AiResult analyze(Bitmap frame, long nowMs) {
         long started = SystemClock.elapsedRealtime();
         List<Detection> overlay = new ArrayList<>();
-        TrafficState observedState = TrafficState.UNKNOWN;
-        float observedStateConfidence = 0f;
+        int phase = analysisPhase++;
+        LandmarkHint hint = landmarkHint;
+        // Model biển VN cũng có lớp đèn đỏ/xanh. Khi chưa có hint, dành 2/3 lượt cho
+        // biển để giảm bỏ sót ở xa; COCO vẫn quét mỗi lượt thứ ba và tracker đọc màu
+        // trực tiếp trên mọi frame giữa hai lượt detector.
+        boolean distancePriority = distanceWarningEnabled && vehicleSpeedKmh >= 45;
+        boolean scenePhase = distancePriority
+                ? phase % 2 == 0
+                : hint.expectsLight()
+                ? phase % 3 != 2
+                : hint.expectsSign() ? phase % 4 == 0 : phase % 3 == 0;
+        SignalObservation observed = observeTrackedLight(frame, nowMs);
+        SignConsensusTracker.Stable stableSign;
+        ForwardHazardAnalyzer.Result hazard = hazardAnalyzer.current(nowMs);
+        LeadVehicleDistanceEstimator.Result distance =
+                distanceEstimator.current(nowMs, vehicleSpeedKmh);
+
+        if (scenePhase) {
+            try {
+                ScenePass scene = detectScenePass(frame, nowMs, hint);
+                hazard = hazardAnalyzer.update(scene.roadObjects,
+                        frame.getWidth(), frame.getHeight(), nowMs, scene.fullScene);
+                if (scene.fullScene) {
+                    distance = distanceEstimator.update(
+                            distanceObservations(scene.roadObjects,
+                                    frame.getWidth(), frame.getHeight()),
+                            vehicleSpeedKmh,
+                            nowMs);
+                }
+                LightCandidate target = chooseTargetLight(frame, scene.lights, nowMs);
+                if (target != null) {
+                    Detection tracked = lightTracker.update(target.detection, nowMs,
+                            frame.getWidth(), frame.getHeight());
+                    observed = new SignalObservation(
+                            tracked,
+                            target.color.state,
+                            clamp(tracked.confidence * 0.54f
+                                    + target.color.confidence * 0.46f, 0f, 1f));
+                } else {
+                    lightTracker.miss(nowMs);
+                }
+            } catch (Throwable error) {
+                errors++;
+                lightTracker.miss(nowMs);
+            }
+            stableSign = signTracker.update(Collections.emptyList(), nowMs);
+        } else {
+            lastVisionMode = "BIỂN VN";
+            try {
+                SignPass signPass = detectSignsAtDistance(frame, hint, nowMs);
+                lastSignRawCount = signPass.signs.size();
+                if (!signPass.signs.isEmpty()) {
+                    lastSigns = signPass.signs;
+                    lastSignsAt = nowMs;
+                }
+                stableSign = signTracker.update(signPass.signs, nowMs);
+                if (signPass.signal != null
+                        && (observed == null
+                        || signPass.signal.confidence > observed.confidence + 0.08f)) {
+                    Detection tracked = lightTracker.update(
+                            signPass.signal.detection, nowMs,
+                            frame.getWidth(), frame.getHeight());
+                    observed = new SignalObservation(
+                            tracked,
+                            signPass.signal.state,
+                            signPass.signal.confidence);
+                }
+            } catch (Throwable error) {
+                errors++;
+                stableSign = signTracker.update(Collections.emptyList(), nowMs);
+            }
+        }
+
+        if (nowMs - lastSignsAt > SIGN_OVERLAY_CACHE_MS) {
+            lastSigns = Collections.emptyList();
+        }
+
+        TrafficState observedState = observed == null
+                ? TrafficState.UNKNOWN : observed.state;
+        float observedConfidence = observed == null ? 0f : observed.confidence;
         Integer observedCountdown = null;
         float countdownConfidence = 0f;
+        boolean targetLocked = lightTracker.isLocked(nowMs);
 
-        try {
-            List<Detection> rawLights = lightDetector.detect(frame, 0.24f, trafficLightClass, 12);
-            LightCandidate target = chooseTargetLight(frame, rawLights);
-            if (target != null) {
-                observedState = target.color.state;
-                observedStateConfidence = clamp(
-                        target.detection.confidence * 0.62f + target.color.confidence * 0.38f,
-                        0f, 1f);
-                String label = "ĐÈN " + observedState.vi;
-                overlay.add(new Detection(
-                        target.detection.box,
-                        target.detection.classId,
-                        label,
-                        observedStateConfidence,
-                        Detection.Kind.TRAFFIC_LIGHT));
-
+        if (observed != null && observed.state != TrafficState.UNKNOWN) {
+            overlay.add(new Detection(
+                    observed.detection.box,
+                    observed.detection.classId,
+                    (targetLocked ? "KHÓA " : "THEO DÕI ") + observed.state.vi,
+                    observed.confidence,
+                    Detection.Kind.TRAFFIC_LIGHT));
+            if (targetLocked || observed.confidence >= 0.74f) {
                 SevenSegmentReader.Result digit = sevenSegmentReader.read(
-                        frame, target.detection.box, observedState);
+                        frame, observed.detection.box, observed.state);
                 observedCountdown = digit.value;
                 countdownConfidence = digit.confidence;
                 if (digit.box != null && digit.value != null) {
@@ -81,112 +171,280 @@ public final class AiCoordinator implements AutoCloseable {
                             digit.confidence, Detection.Kind.COUNTDOWN));
                 }
             }
-        } catch (Throwable error) {
-            errors++;
         }
 
         CountdownTracker.Result countdown = countdownTracker.update(
-                observedState,
-                observedStateConfidence,
-                observedCountdown,
-                countdownConfidence,
-                nowMs);
-
-        frameCounter++;
-        if (frameCounter % 3 == 1) {
-            try {
-                List<Detection> signs = detectSignsPrecision(frame);
-                lastSigns = signs;
-                signTracker.update(signs, nowMs);
-            } catch (Throwable error) {
-                errors++;
-                signTracker.update(Collections.emptyList(), nowMs);
-            }
-        }
+                observedState, observedConfidence,
+                observedCountdown, countdownConfidence, nowMs);
         overlay.addAll(lastSigns);
-        SignConsensusTracker.Stable stableSign = signTracker.update(Collections.emptyList(), nowMs);
+        overlay.addAll(hazard.detections);
+        if (distance.hasLeadVehicle && distance.observation != null) {
+            LeadVehicleDistanceEstimator.Observation lead = distance.observation;
+            String distanceLabel = distance.vehicleLabel + " TRƯỚC • "
+                    + Math.round(distance.distanceMeters) + " m";
+            overlay.add(new Detection(
+                    new RectF(
+                            lead.left * frame.getWidth(),
+                            lead.top * frame.getHeight(),
+                            lead.right * frame.getWidth(),
+                            lead.bottom * frame.getHeight()),
+                    lead.classId,
+                    distanceLabel,
+                    distance.confidence,
+                    Detection.Kind.LEAD_VEHICLE));
+        }
+
         String signText = stableSign == null ? "" : stableSign.detection.label;
         float signConfidence = stableSign == null ? 0f : stableSign.confidence;
-
+        long signTrackId = stableSign == null ? -1L : stableSign.trackId;
         long elapsed = SystemClock.elapsedRealtime() - started;
-        String status = "AI đèn + biển + LED • " + elapsed + " ms"
-                + (errors > 0 ? " • lỗi frame " + errors : "");
+        String status = "FUSION • " + lastVisionMode
+                + " • LÀN " + lanePreference.vi
+                + (targetLocked ? " • KHÓA MỤC TIÊU" : " • ĐANG TÌM")
+                + (hint.isActive() ? " • ĐIỂM ĐÃ HỌC "
+                + Math.round(hint.distanceMeters) + " m" : "")
+                + " • " + elapsed + " ms"
+                + " • BIỂN RAW " + lastSignRawCount
+                + " TRACK " + signTracker.activeTrackCount()
+                + (distance.hasLeadVehicle
+                ? " • KC " + Math.round(distance.distanceMeters) + " m"
+                : distanceWarningEnabled ? " • KC ĐANG TÌM" : " • KC TẮT")
+                + (errors > 0 ? " • lỗi " + errors : "");
         return new AiResult(
                 overlay,
                 countdown.state,
-                observedStateConfidence,
+                countdown.confidence,
                 countdown.visibleNumber,
                 signText,
                 signConfidence,
+                signTrackId,
+                hazard.text,
+                hazard.confidence,
+                distance.state,
+                distance.distanceMeters,
+                distance.requiredDistanceMeters,
+                distance.headwaySeconds,
+                distance.closingSpeedKmh,
+                distance.ttcSeconds,
+                distance.confidence,
+                distance.vehicleLabel,
+                targetLocked,
                 elapsed,
                 status);
     }
 
-    private List<Detection> detectSignsPrecision(Bitmap frame) throws Exception {
-        RectF tile = nextTile(frame);
-        List<Detection> firstPass = signDetector.detect(frame, tile, 0.34f, null, 18);
-        if (firstPass.isEmpty()) return Collections.emptyList();
-
-        Detection best = firstPass.get(0);
-        for (Detection detection : firstPass) {
-            if (detection.confidence > best.confidence) best = detection;
+    private ScenePass detectScenePass(
+            Bitmap frame, long nowMs, LandmarkHint hint) throws Exception {
+        int pass = scenePassCounter++;
+        RectF region = null;
+        boolean fullScene = false;
+        RectF focus = lightTracker.focusRegion(
+                nowMs, frame.getWidth(), frame.getHeight());
+        if (focus != null && pass % 4 != 3) {
+            region = focus;
+            lastVisionMode = "NHÌN TẬP TRUNG";
+        } else if (hint.expectsLight() && pass % 4 != 3) {
+            region = learnedRegion(frame, hint, .40f, .55f);
+            lastVisionMode = "NHỚ VỊ TRÍ ĐÈN";
+        } else if (pass % 2 == 0 || focus != null) {
+            fullScene = true;
+            lastVisionMode = "QUÉT TOÀN CẢNH";
+        } else {
+            region = nextLightTile(frame);
+            lastVisionMode = "QUÉT XA";
         }
-        RectF confirmRegion = expand(best.box, frame.getWidth(), frame.getHeight(), 1.7f);
-        Set<Integer> sameClass = new HashSet<>();
-        sameClass.add(best.classId);
-        List<Detection> secondPass = signDetector.detect(
-                frame, confirmRegion, 0.28f, sameClass, 5);
 
-        List<Detection> confirmed = new ArrayList<>();
-        for (Detection candidate : firstPass) {
-            boolean isConfirmed = candidate.confidence >= 0.72f;
-            if (candidate.classId == best.classId) {
-                for (Detection second : secondPass) {
-                    if (second.classId == candidate.classId && iou(candidate.box, second.box) > 0.05f) {
-                        float fused = clamp(candidate.confidence * 0.58f + second.confidence * 0.42f, 0f, 1f);
-                        confirmed.add(new Detection(
-                                candidate.box, candidate.classId, candidate.label,
-                                fused, Detection.Kind.TRAFFIC_SIGN));
-                        isConfirmed = true;
-                        break;
-                    }
-                }
-            }
-            if (isConfirmed && !containsClass(confirmed, candidate.classId)) confirmed.add(candidate);
+        List<Detection> raw = sceneDetector.detect(
+                frame, region, fullScene ? 0.16f : 0.12f, sceneClasses, 30);
+        List<Detection> lights = new ArrayList<>();
+        List<Detection> roadObjects = new ArrayList<>();
+        for (Detection detection : raw) {
+            if (detection.classId == 9) lights.add(detection);
+            else roadObjects.add(detection);
         }
-        return YoloDetector.mergeNms(confirmed, 0.38f, 10);
+        return new ScenePass(lights, roadObjects, fullScene);
     }
 
-    private RectF nextTile(Bitmap frame) {
-        int index = signTile++ % 4;
+    private SignalObservation observeTrackedLight(Bitmap frame, long nowMs) {
+        Detection tracked = lightTracker.current(
+                nowMs, frame.getWidth(), frame.getHeight());
+        if (tracked == null || tracked.confidence < 0.16f) return null;
+        TrafficLightAnalyzer.Result color = lightAnalyzer.analyze(frame, tracked.box);
+        if (color.state == TrafficState.UNKNOWN) return null;
+        float ageEvidence = lightTracker.isLocked(nowMs) ? 1f : 0.72f;
+        float confidence = clamp(tracked.confidence * 0.48f
+                + color.confidence * 0.42f + ageEvidence * 0.10f, 0f, 1f);
+        return new SignalObservation(tracked, color.state, confidence);
+    }
+
+    private SignPass detectSignsAtDistance(
+            Bitmap frame, LandmarkHint hint, long nowMs) throws Exception {
+        int pass = signPassCounter++;
+        RectF focus = signTracker.focusRegion(
+                nowMs, frame.getWidth(), frame.getHeight());
+        RectF tile;
+        if (focus != null && pass % 3 != 2) {
+            tile = focus;
+            lastVisionMode = "PHÓNG BIỂN Ở XA";
+        } else if (hint.expectsSign() && pass % 3 != 2) {
+            tile = learnedRegion(frame, hint, .40f, .54f);
+            lastVisionMode = "ĐỐI CHIẾU BIỂN ĐÃ NHỚ";
+        } else {
+            tile = nextSignTile(frame);
+            lastVisionMode = tile == null ? "BIỂN TOÀN CẢNH" : "QUÉT BIỂN XA";
+        }
+        List<Detection> raw = signDetector.detect(
+                frame, tile,
+                focus != null ? 0.12f
+                        : hint.expectsSign() ? 0.11f : tile == null ? 0.15f : 0.12f,
+                null, 40);
+        List<Detection> signs = new ArrayList<>();
+        SignalCandidate signal = null;
+        for (Detection detection : raw) {
+            if (detection.box.width() < 3f || detection.box.height() < 3f) continue;
+            float centerX = detection.box.centerX() / frame.getWidth();
+            float centerY = detection.box.centerY() / frame.getHeight();
+            boolean signalClass = detection.classId == SIGN_GREEN_LIGHT_CLASS
+                    || detection.classId == SIGN_RED_LIGHT_CLASS;
+            float geometry = signalClass
+                    ? RoadGeometryPrior.trafficLightEvidence(centerX, centerY)
+                    : RoadGeometryPrior.trafficSignEvidence(centerX, centerY);
+            float adjustedConfidence = RoadGeometryPrior.adjustConfidence(
+                    detection.confidence, geometry);
+            Detection adjusted = new Detection(
+                    detection.box,
+                    detection.classId,
+                    detection.label,
+                    adjustedConfidence,
+                    detection.kind);
+            if (signalClass) {
+                TrafficState state = detection.classId == SIGN_GREEN_LIGHT_CLASS
+                        ? TrafficState.GREEN : TrafficState.RED;
+                TrafficLightAnalyzer.Result pixel = lightAnalyzer.analyze(frame, detection.box);
+                boolean agrees = pixel.state == state;
+                boolean noPixelAnswer = pixel.state == TrafficState.UNKNOWN;
+                if (!agrees && !noPixelAnswer) continue;
+                float confidence = agrees
+                        ? clamp(adjustedConfidence * 0.68f
+                                + pixel.confidence * 0.32f, 0f, 1f)
+                        : adjustedConfidence * 0.68f;
+                boolean strongWithoutPixel = noPixelAnswer
+                        && adjustedConfidence >= 0.66f && geometry >= 0.70f;
+                if ((agrees && confidence >= 0.34f || strongWithoutPixel)
+                        && (signal == null || confidence > signal.confidence)) {
+                    Detection signalDetection = new Detection(
+                            adjusted.box, adjusted.classId, "traffic light",
+                            adjusted.confidence, Detection.Kind.TRAFFIC_LIGHT);
+                    signal = new SignalCandidate(signalDetection, state, confidence);
+                }
+                continue;
+            }
+            signs.add(adjusted);
+        }
+        return new SignPass(YoloDetector.mergeNms(signs, 0.36f, 20), signal);
+    }
+
+    private RectF nextLightTile(Bitmap frame) {
+        int slot = lanePreference.scanSlot(lightTile++);
         float width = frame.getWidth();
         float height = frame.getHeight();
-        if (index == 0) return new RectF(0, 0, width, height);
-        if (index == 1) return new RectF(0, 0, width * 0.62f, height * 0.82f);
-        if (index == 2) return new RectF(width * 0.19f, 0, width * 0.81f, height * 0.82f);
-        return new RectF(width * 0.38f, 0, width, height * 0.82f);
+        if (slot == 1) {
+            return new RectF(width * 0.50f, 0, width, height * 0.78f);
+        }
+        if (slot == 0) {
+            return new RectF(width * 0.25f, 0, width * 0.75f, height * 0.78f);
+        }
+        if (slot == -1) return new RectF(0, 0, width * 0.50f, height * 0.78f);
+        return null;
     }
 
-    private LightCandidate chooseTargetLight(Bitmap frame, List<Detection> detections) {
+    private List<LeadVehicleDistanceEstimator.Observation> distanceObservations(
+            List<Detection> detections, int frameWidth, int frameHeight) {
+        List<LeadVehicleDistanceEstimator.Observation> values = new ArrayList<>();
+        float width = Math.max(1f, frameWidth);
+        float height = Math.max(1f, frameHeight);
+        for (Detection detection : detections) {
+            if (detection == null) continue;
+            values.add(new LeadVehicleDistanceEstimator.Observation(
+                    detection.box.left / width,
+                    detection.box.top / height,
+                    detection.box.right / width,
+                    detection.box.bottom / height,
+                    detection.classId,
+                    detection.confidence));
+        }
+        return values;
+    }
+
+    private RectF nextSignTile(Bitmap frame) {
+        int slot = lanePreference.scanSlot(signTile++);
+        float width = frame.getWidth();
+        float height = frame.getHeight();
+        if (slot == 1) {
+            return new RectF(width * 0.54f, 0, width, height * 0.80f);
+        }
+        if (slot == 0) {
+            return new RectF(width * 0.27f, 0, width * 0.73f, height * 0.80f);
+        }
+        if (slot == -1) {
+            return new RectF(0, 0, width * 0.46f, height * 0.80f);
+        }
+        return null;
+    }
+
+    private RectF learnedRegion(
+            Bitmap frame, LandmarkHint hint, float normalizedWidth, float normalizedHeight) {
+        float width = frame.getWidth();
+        float height = frame.getHeight();
+        float halfWidth = width * normalizedWidth * .5f;
+        float halfHeight = height * normalizedHeight * .5f;
+        float centerX = hint.imageX * width;
+        float centerY = hint.imageY * height;
+        return new RectF(
+                Math.max(0f, centerX - halfWidth),
+                Math.max(0f, centerY - halfHeight),
+                Math.min(width, centerX + halfWidth),
+                Math.min(height * .92f, centerY + halfHeight));
+    }
+
+    private LightCandidate chooseTargetLight(
+            Bitmap frame, List<Detection> detections, long nowMs) {
         LightCandidate best = null;
         float bestScore = -1f;
+        boolean locked = lightTracker.isLocked(nowMs);
         for (Detection detection : detections) {
             float centerX = detection.box.centerX() / frame.getWidth();
             float centerY = detection.box.centerY() / frame.getHeight();
             if (centerY > 0.88f) continue;
             TrafficLightAnalyzer.Result color = lightAnalyzer.analyze(frame, detection.box);
             if (color.state == TrafficState.UNKNOWN) continue;
-            float centerEvidence = clamp(1f - Math.abs(centerX - 0.5f) / 0.5f, 0f, 1f);
+            float geometry = RoadGeometryPrior.trafficLightEvidence(centerX, centerY);
+            float direction = RoadGeometryPrior.travelDirectionEvidence(centerX, centerY);
+            float laneEvidence = lanePreference.visualEvidence(centerX);
+            float adjustedConfidence = RoadGeometryPrior.adjustConfidence(
+                    detection.confidence, geometry);
             float area = detection.box.width() * detection.box.height()
                     / (frame.getWidth() * (float) frame.getHeight());
             float sizeEvidence = clamp(area / 0.008f, 0f, 1f);
-            float score = detection.confidence * 0.48f
-                    + color.confidence * 0.30f
-                    + centerEvidence * 0.15f
-                    + sizeEvidence * 0.07f;
+            float continuity = lightTracker.affinity(
+                    detection, nowMs, frame.getWidth(), frame.getHeight());
+            float score = adjustedConfidence * 0.31f
+                    + color.confidence * 0.29f
+                    + geometry * 0.12f
+                    + direction * 0.05f
+                    + laneEvidence * 0.09f
+                    + sizeEvidence * 0.05f
+                    + continuity * 0.09f;
+            if (locked && continuity < 0.10f) score -= 0.12f;
             if (score > bestScore) {
                 bestScore = score;
-                best = new LightCandidate(detection, color);
+                Detection adjusted = new Detection(
+                        detection.box,
+                        detection.classId,
+                        detection.label,
+                        adjustedConfidence,
+                        Detection.Kind.TRAFFIC_LIGHT);
+                best = new LightCandidate(adjusted, color);
             }
         }
         return best;
@@ -195,49 +453,60 @@ public final class AiCoordinator implements AutoCloseable {
     public synchronized void reset() {
         countdownTracker.reset();
         signTracker.reset();
+        lightTracker.reset();
+        hazardAnalyzer.reset();
+        distanceEstimator.reset();
         lastSigns = Collections.emptyList();
-        frameCounter = 0;
+        lastSignsAt = 0L;
+        analysisPhase = 0;
+        scenePassCounter = 0;
+        signPassCounter = 0;
         signTile = 0;
+        lightTile = 0;
         errors = 0;
+        lastSignRawCount = 0;
+        lastVisionMode = "QUÉT";
+    }
+
+    public synchronized void setLandmarkHint(LandmarkHint hint) {
+        landmarkHint = hint == null ? LandmarkHint.NONE : hint;
+    }
+
+    public synchronized void setLanePreference(LanePreference preference) {
+        lanePreference = preference == null ? LanePreference.CENTER : preference;
+    }
+
+    public synchronized void setVehicleSpeedKmh(int speedKmh) {
+        vehicleSpeedKmh = Math.max(0, speedKmh);
+    }
+
+    public synchronized void configureDistanceWarning(
+            boolean enabled,
+            LeadVehicleDistanceEstimator.Calibration calibration) {
+        distanceWarningEnabled = enabled;
+        distanceEstimator.configure(enabled, calibration);
     }
 
     @Override
     public synchronized void close() throws Exception {
-        lightDetector.close();
+        sceneDetector.close();
         signDetector.close();
-    }
-
-    private static boolean containsClass(List<Detection> detections, int classId) {
-        for (Detection detection : detections) {
-            if (detection.classId == classId) return true;
-        }
-        return false;
-    }
-
-    private static RectF expand(RectF box, int width, int height, float factor) {
-        float cx = box.centerX();
-        float cy = box.centerY();
-        float halfW = box.width() * factor / 2f;
-        float halfH = box.height() * factor / 2f;
-        return new RectF(
-                Math.max(0, cx - halfW),
-                Math.max(0, cy - halfH),
-                Math.min(width, cx + halfW),
-                Math.min(height, cy + halfH));
-    }
-
-    private static float iou(RectF a, RectF b) {
-        float left = Math.max(a.left, b.left);
-        float top = Math.max(a.top, b.top);
-        float right = Math.min(a.right, b.right);
-        float bottom = Math.min(a.bottom, b.bottom);
-        float intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
-        float union = a.width() * a.height() + b.width() * b.height() - intersection;
-        return intersection / Math.max(1e-6f, union);
     }
 
     private static float clamp(float value, float low, float high) {
         return Math.max(low, Math.min(high, value));
+    }
+
+    private static final class ScenePass {
+        final List<Detection> lights;
+        final List<Detection> roadObjects;
+        final boolean fullScene;
+
+        ScenePass(List<Detection> lights, List<Detection> roadObjects, boolean fullScene) {
+            this.lights = lights;
+            this.roadObjects = roadObjects;
+            this.fullScene = fullScene;
+        }
     }
 
     private static final class LightCandidate {
@@ -247,6 +516,40 @@ public final class AiCoordinator implements AutoCloseable {
         LightCandidate(Detection detection, TrafficLightAnalyzer.Result color) {
             this.detection = detection;
             this.color = color;
+        }
+    }
+
+    private static final class SignalCandidate {
+        final Detection detection;
+        final TrafficState state;
+        final float confidence;
+
+        SignalCandidate(Detection detection, TrafficState state, float confidence) {
+            this.detection = detection;
+            this.state = state;
+            this.confidence = confidence;
+        }
+    }
+
+    private static final class SignalObservation {
+        final Detection detection;
+        final TrafficState state;
+        final float confidence;
+
+        SignalObservation(Detection detection, TrafficState state, float confidence) {
+            this.detection = detection;
+            this.state = state;
+            this.confidence = confidence;
+        }
+    }
+
+    private static final class SignPass {
+        final List<Detection> signs;
+        final SignalCandidate signal;
+
+        SignPass(List<Detection> signs, SignalCandidate signal) {
+            this.signs = signs;
+            this.signal = signal;
         }
     }
 }

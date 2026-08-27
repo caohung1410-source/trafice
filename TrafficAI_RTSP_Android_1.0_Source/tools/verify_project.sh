@@ -10,6 +10,7 @@ required=(
   "$project_root/app/src/main/res/layout/activity_main.xml"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraRotationPolicy.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/AlertAudioMode.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraProfileStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MacAddressPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/MacCameraLocator.java"
@@ -52,7 +53,7 @@ if command -v xmllint >/dev/null 2>&1; then
   done < <(find "$project_root/app/src/main" -name '*.xml' -print0)
 fi
 
-# Bản 2.5.1 được phép lưu credential nhưng bắt buộc là ciphertext qua Android Keystore.
+# Hồ sơ camera được phép lưu credential nhưng bắt buộc là ciphertext qua Android Keystore.
 if command -v rg >/dev/null 2>&1; then
   if rg -n 'putString\("(password|safety_code|rtsp_url|full_url)"' \
     "$project_root/app/src/main/java" >/dev/null; then
@@ -95,8 +96,15 @@ grep -q 'highway\\"=\\"speed_camera' "$project_root/app/src/main/java/vn/bachphu
 grep -q 'quickMenuOverlay' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'incidentOverlay' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'settingsHomeList' "$project_root/app/src/main/res/layout/activity_main.xml"
-grep -q 'setVoiceAlertsEnabled' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'setAudioMode' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'playAlertChime' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'audioChimeButton' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'mapMarkerIcon' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 grep -q 'macConnectButton' "$project_root/app/src/main/res/layout/activity_main.xml"
-grep -q 'NEARBY_WIFI_DEVICES' "$project_root/app/src/main/AndroidManifest.xml"
-echo "verify_project: PASS • TrafficAI 2.5.1 • Precision • Icon map • Camera Lock"
+if grep -q 'NEARBY_WIFI_DEVICES' "$project_root/app/src/main/AndroidManifest.xml"; then
+  echo "Không đạt: socket RTSP target SDK 36 không được chặn bằng quyền Nearby Wi-Fi" >&2
+  exit 1
+fi
+grep -q 'editor.commit()' "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraProfileStore.java"
+grep -q 'tryImouSubstreamFallback' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+echo "verify_project: PASS • TrafficAI 2.5.2 • Camera Connect • 3 Audio Modes"

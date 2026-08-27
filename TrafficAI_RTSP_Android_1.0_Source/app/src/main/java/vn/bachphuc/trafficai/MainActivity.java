@@ -24,8 +24,9 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -97,7 +98,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private static final int LOCATION_PERMISSION_REQUEST = 1201;
     private static final int VOICE_SEARCH_REQUEST = 1202;
     private static final int PHONE_CAMERA_PERMISSION_REQUEST = 1203;
-    private static final int NEARBY_WIFI_PERMISSION_REQUEST = 1204;
     private static final long FRAME_INTERVAL_MS = 40L;
     private static final int CAPTURE_WIDTH = 1280;
     private static final int CAPTURE_HEIGHT = 720;
@@ -116,6 +116,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private View quickMenuOverlay;
     private View incidentOverlay;
     private View soundToggleButton;
+    private TextView audioModeBadge;
     private EditText fullUrlInput;
     private EditText hostInput;
     private EditText portInput;
@@ -144,6 +145,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private Button phoneCameraButton;
     private Button rotatePhoneCameraButton;
     private Button macConnectButton;
+    private Button audioVoiceButton;
+    private Button audioChimeButton;
+    private Button audioMuteButton;
     private Button downloadMapButton;
     private LinearLayout navigationPanel;
     private EditText destinationSearchInput;
@@ -180,7 +184,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private boolean aiInitializing;
     private TextToSpeech textToSpeech;
     private boolean ttsReady;
-    private boolean voiceAlertsEnabled = true;
+    private AlertAudioMode audioMode = AlertAudioMode.VOICE;
+    private ToneGenerator alertToneGenerator;
+    private long lastChimeAt;
     private volatile boolean destroyed;
     private boolean framePumpEnabled;
 
@@ -237,6 +243,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private boolean routeBusy;
     private boolean cameraReconnectRequested;
     private boolean macDiscoveryBusy;
+    private boolean cameraProfileSaved = true;
+    private boolean rtspFallbackAttempted;
+    private String activeRtspUrl = "";
     private double lastTrafficFetchLat = Double.NaN;
     private double lastTrafficFetchLon = Double.NaN;
     private long lastTrafficFetchAt;
@@ -329,6 +338,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         quickMenuOverlay = findViewById(R.id.quickMenuOverlay);
         incidentOverlay = findViewById(R.id.incidentOverlay);
         soundToggleButton = findViewById(R.id.soundToggleButton);
+        audioModeBadge = findViewById(R.id.audioModeBadge);
         fullUrlInput = findViewById(R.id.fullUrlInput);
         hostInput = findViewById(R.id.hostInput);
         portInput = findViewById(R.id.portInput);
@@ -357,6 +367,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraButton = findViewById(R.id.phoneCameraButton);
         rotatePhoneCameraButton = findViewById(R.id.rotatePhoneCameraButton);
         macConnectButton = findViewById(R.id.macConnectButton);
+        audioVoiceButton = findViewById(R.id.audioVoiceButton);
+        audioChimeButton = findViewById(R.id.audioChimeButton);
+        audioMuteButton = findViewById(R.id.audioMuteButton);
         downloadMapButton = findViewById(R.id.downloadMapButton);
         navigationPanel = findViewById(R.id.navigationPanel);
         destinationSearchInput = findViewById(R.id.destinationSearchInput);
@@ -417,8 +430,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         closeIncident.setOnClickListener(view -> showIncidentOverlay(false));
         zoomIn.setOnClickListener(view -> zoomMap(true));
         zoomOut.setOnClickListener(view -> zoomMap(false));
-        soundToggleButton.setOnClickListener(view ->
-                setVoiceAlertsEnabled(!voiceAlertsEnabled, true));
+        soundToggleButton.setOnClickListener(view -> setAudioMode(audioMode.next(), true));
         subStream.setOnClickListener(view -> setImouSubtype(1));
         mainStream.setOnClickListener(view -> setImouSubtype(0));
         connect.setOnClickListener(view -> connectRtsp());
@@ -426,6 +438,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraButton.setOnClickListener(view -> switchToPhoneCamera());
         rotatePhoneCameraButton.setOnClickListener(view -> rotatePhoneCameraPreview());
         macConnectButton.setOnClickListener(view -> connectByPinnedMac());
+        audioVoiceButton.setOnClickListener(view ->
+                setAudioMode(AlertAudioMode.VOICE, true));
+        audioChimeButton.setOnClickListener(view ->
+                setAudioMode(AlertAudioMode.CHIME, true));
+        audioMuteButton.setOnClickListener(view ->
+                setAudioMode(AlertAudioMode.MUTE, true));
         initAiButton.setOnClickListener(view -> initializeAi());
         mapButton.setOnClickListener(view -> {
             showQuickMenu(false);
@@ -449,9 +467,13 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         limit60.setOnClickListener(view -> setSpeedLimit(60, "Đặt thủ công"));
         limit80.setOnClickListener(view -> setSpeedLimit(80, "Đặt thủ công"));
         testSpeech.setOnClickListener(view -> {
-            if (!voiceAlertsEnabled) {
-                Toast.makeText(this, "Cảnh báo giọng nói đang tắt ở nút loa trên bản đồ.",
+            if (audioMode == AlertAudioMode.MUTE) {
+                Toast.makeText(this, "Âm thanh đang ở chế độ TẮT TIẾNG.",
                         Toast.LENGTH_LONG).show();
+            } else if (audioMode == AlertAudioMode.CHIME) {
+                playAlertChime(true);
+                Toast.makeText(this, "Đã thử cảnh báo đing đinh.",
+                        Toast.LENGTH_SHORT).show();
             } else if (ttsReady) {
                 speak("Kiểm tra giọng nói. Đèn đỏ, còn mười giây. Biển báo giới hạn tốc độ bốn mươi.",
                         TextToSpeech.QUEUE_FLUSH);
@@ -471,7 +493,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         SharedPreferences preferences = getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE);
         manualCameraRotationDegrees = CameraRotationPolicy.normalizeManualDegrees(
                 preferences.getInt("phone_camera_rotation", 0));
-        voiceAlertsEnabled = preferences.getBoolean("voice_alerts_enabled", true);
+        audioMode = AlertAudioMode.fromStored(
+                preferences.getString("alert_audio_mode", ""),
+                preferences.getBoolean("voice_alerts_enabled", true));
         updateSoundToggle();
         updatePhoneCameraRotationButton();
         geocoderUrlInput.setText(preferences.getString(
@@ -497,9 +521,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         cameraReconnectRequested = profile.autoReconnect;
     }
 
-    private void saveCameraProfile() {
-        if (cameraProfileStore == null) return;
-        cameraProfileStore.save(new CameraProfileStore.Profile(
+    private boolean saveCameraProfile() {
+        if (cameraProfileStore == null) return false;
+        cameraProfileSaved = cameraProfileStore.save(new CameraProfileStore.Profile(
                 text(fullUrlInput),
                 text(hostInput),
                 text(portInput),
@@ -510,6 +534,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 tcpCheck.isChecked(),
                 cameraReconnectRequested && autoReconnectCheck.isChecked(),
                 phoneCameraMode));
+        return cameraProfileSaved;
     }
 
     private void autoReconnectSavedCamera() {
@@ -519,13 +544,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (profile.phoneCamera) {
             switchToPhoneCamera();
         } else if (MacAddressPolicy.isValidDeviceMac(profile.pinnedMac)) {
-            if (Build.VERSION.SDK_INT >= 33
-                    && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
-                    != PackageManager.PERMISSION_GRANTED) {
-                setStatus("Camera đã lưu theo MAC • mở Cài đặt và bấm kết nối MAC "
-                        + "để cấp quyền Thiết bị ở gần lần đầu");
-                return;
-            }
             connectByPinnedMac();
         } else if (!profile.fullUrl.isEmpty() || !profile.host.isEmpty()) {
             connectRtsp();
@@ -539,13 +557,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             return;
         }
         macInput.setText(mac);
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.NEARBY_WIFI_DEVICES},
-                    NEARBY_WIFI_PERMISSION_REQUEST);
-            return;
-        }
         startMacDiscovery(mac);
     }
 
@@ -615,7 +626,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             String message = "Ưu tiên quan sát làn "
                     + lanePreference.vi.toLowerCase(new Locale("vi", "VN"));
             setStatus(message + " • AI vẫn quét toàn cảnh định kỳ");
-            if (ttsReady) speak(message, TextToSpeech.QUEUE_ADD);
+            if (audioMode != AlertAudioMode.MUTE) speak(message, TextToSpeech.QUEUE_ADD);
         }
     }
 
@@ -640,7 +651,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         + "Android Keystore trên điện thoại, không đồng bộ lên máy chủ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
-                "TrafficAI 2.5.1 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
+                "TrafficAI 2.5.2 đang dùng chủ đề bản đồ sáng, HUD tương phản cao.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
                 "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
@@ -723,26 +734,65 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         speak("Đã ghi nhận " + label, TextToSpeech.QUEUE_ADD);
     }
 
-    private void setVoiceAlertsEnabled(boolean enabled, boolean announce) {
-        voiceAlertsEnabled = enabled;
+    private void setAudioMode(AlertAudioMode mode, boolean announce) {
+        audioMode = mode == null ? AlertAudioMode.VOICE : mode;
         getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
-                .putBoolean("voice_alerts_enabled", enabled)
+                .putString("alert_audio_mode", audioMode.name())
+                .putBoolean("voice_alerts_enabled", audioMode == AlertAudioMode.VOICE)
                 .apply();
         updateSoundToggle();
-        if (!enabled && textToSpeech != null) textToSpeech.stop();
+        if (audioMode != AlertAudioMode.VOICE && textToSpeech != null) {
+            textToSpeech.stop();
+        }
         if (announce) {
-            Toast.makeText(this,
-                    enabled ? "Đã bật cảnh báo giọng nói" : "Đã tắt cảnh báo giọng nói",
-                    Toast.LENGTH_SHORT).show();
-            if (enabled) speak("Đã bật cảnh báo giọng nói", TextToSpeech.QUEUE_FLUSH);
+            Toast.makeText(this, audioMode.description, Toast.LENGTH_SHORT).show();
+            if (audioMode == AlertAudioMode.VOICE) {
+                speak("Đã bật chế độ đọc cảnh báo", TextToSpeech.QUEUE_FLUSH);
+            } else if (audioMode == AlertAudioMode.CHIME) {
+                playAlertChime(true);
+            }
         }
     }
 
     private void updateSoundToggle() {
         if (soundToggleButton == null) return;
-        soundToggleButton.setAlpha(voiceAlertsEnabled ? 1f : .42f);
-        soundToggleButton.setContentDescription(voiceAlertsEnabled
-                ? "Tắt cảnh báo giọng nói" : "Bật cảnh báo giọng nói");
+        soundToggleButton.setAlpha(audioMode == AlertAudioMode.VOICE
+                ? 1f : audioMode == AlertAudioMode.CHIME ? .82f : .42f);
+        soundToggleButton.setContentDescription(
+                "Chế độ âm thanh: " + audioMode.description + " • bấm để chuyển");
+        if (audioModeBadge != null) audioModeBadge.setText(audioMode.shortLabel);
+        updateAudioModeButton(audioVoiceButton, AlertAudioMode.VOICE, "ĐỌC");
+        updateAudioModeButton(audioChimeButton, AlertAudioMode.CHIME, "ĐING ĐINH");
+        updateAudioModeButton(audioMuteButton, AlertAudioMode.MUTE, "TẮT TIẾNG");
+    }
+
+    private void updateAudioModeButton(
+            Button button, AlertAudioMode candidate, String label) {
+        if (button == null) return;
+        boolean selected = audioMode == candidate;
+        button.setText(selected ? "✓ " + label : label);
+        button.setTextColor(selected ? Color.WHITE : Color.rgb(40, 47, 58));
+        button.setBackgroundTintList(ColorStateList.valueOf(selected
+                ? Color.rgb(30, 105, 150) : Color.rgb(232, 237, 242)));
+    }
+
+    private void playAlertChime(boolean force) {
+        long now = SystemClock.elapsedRealtime();
+        if (!force && now - lastChimeAt < 1_100L) return;
+        lastChimeAt = now;
+        try {
+            if (alertToneGenerator == null) {
+                alertToneGenerator = new ToneGenerator(AudioManager.STREAM_MUSIC, 88);
+            }
+            alertToneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 110);
+            mainHandler.postDelayed(() -> {
+                if (!destroyed && audioMode == AlertAudioMode.CHIME
+                        && alertToneGenerator != null) {
+                    alertToneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP2, 135);
+                }
+            }, 190L);
+        } catch (Throwable ignored) {
+        }
     }
 
     private void zoomMap(boolean zoomIn) {
@@ -878,7 +928,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         redrawMapAnnotations();
         setStatus((replan ? "Đã tính lại tuyến" : "Đã tạo tuyến")
                 + " • dữ liệu định tuyến OSRM/OpenStreetMap");
-        if (ttsReady) speak(
+        if (audioMode != AlertAudioMode.MUTE) speak(
                 (replan ? "Đã tính lại tuyến đường" : "Đã tạo tuyến đến "
                         + shortPlaceName(destination.displayName)),
                 TextToSpeech.QUEUE_ADD);
@@ -995,7 +1045,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.5.1 • "
+        String metadata = "{\"name\":\"TrafficAI 2.5.2 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -1057,7 +1107,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         modelProgress.setProgress(100);
         downloadMapButton.setEnabled(true);
         setStatus("Map offline 25 km đã sẵn sàng • tắt Internet vẫn xem được vùng đã tải");
-        if (ttsReady) speak("Đã tải xong bản đồ ngoại tuyến", TextToSpeech.QUEUE_ADD);
+        if (audioMode != AlertAudioMode.MUTE) {
+            speak("Đã tải xong bản đồ ngoại tuyến", TextToSpeech.QUEUE_ADD);
+        }
         checkOfflineMapStatus();
     }
 
@@ -1256,7 +1308,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     cameraSourceBadge.setText("CAMERA: RTSP • ẢNH TRỰC TIẾP");
                     CarTelemetryStore.updateConnection(true, aiCoordinator != null);
                     setStatus("RTSP đã kết nối • mic camera đã tắt • video đang chạy"
-                            + (aiCoordinator == null ? " • AI chưa mở" : " • AI đang phân tích"));
+                            + (aiCoordinator == null ? " • AI chưa mở" : " • AI đang phân tích")
+                            + (cameraProfileSaved ? " • cấu hình đã lưu"
+                            : " • CẢNH BÁO: chưa lưu được cấu hình"));
                 } else if (state == Player.STATE_ENDED) {
                     if (!phoneCameraMode) cameraSourceBadge.setText("CAMERA: RTSP ĐÃ DỪNG");
                     CarTelemetryStore.updateConnection(false, aiCoordinator != null);
@@ -1268,12 +1322,37 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             public void onPlayerError(PlaybackException error) {
                 if (!phoneCameraMode) cameraSourceBadge.setText("CAMERA: RTSP LỖI");
                 CarTelemetryStore.updateConnection(false, aiCoordinator != null);
-                setStatus("Lỗi RTSP: " + error.getErrorCodeName());
+                if (!phoneCameraMode && tryImouSubstreamFallback(error)) return;
+                Throwable detail = error.getCause() == null ? error : error.getCause();
+                setStatus("Lỗi RTSP " + error.getErrorCodeName() + " • "
+                        + safeMessage(detail)
+                        + " • kiểm tra IP/Safety Code hoặc bật H.264");
                 Toast.makeText(MainActivity.this,
-                        "Không mở được camera. Kiểm tra IP, tài khoản, H.264 và cùng mạng Wi-Fi.",
+                        "Không mở được camera. Kiểm tra cùng Wi-Fi, IP, Safety Code và H.264.",
                         Toast.LENGTH_LONG).show();
             }
         });
+    }
+
+    private boolean tryImouSubstreamFallback(PlaybackException error) {
+        if (rtspFallbackAttempted || !RtspUrlBuilder.isImouMainStream(activeRtspUrl)) {
+            return false;
+        }
+        String fallbackUrl = RtspUrlBuilder.withImouSubtype(activeRtspUrl, 1);
+        if (fallbackUrl.equals(activeRtspUrl)) return false;
+        rtspFallbackAttempted = true;
+        if (text(fullUrlInput).isEmpty()) {
+            pathInput.setText(RtspUrlBuilder.withImouSubtype(text(pathInput), 1));
+        } else {
+            fullUrlInput.setText(fallbackUrl);
+        }
+        cameraSourceBadge.setText("CAMERA: ĐANG THỬ LUỒNG PHỤ H.264");
+        setStatus("Luồng chính không mở được (" + error.getErrorCodeName()
+                + ") • tự chuyển IMOU SUB 1 nhẹ hơn");
+        mainHandler.postDelayed(() -> {
+            if (!destroyed && !phoneCameraMode) openRtsp(fallbackUrl);
+        }, 450L);
+        return true;
     }
 
     private void switchToPhoneCamera() {
@@ -1572,11 +1651,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void connectRtsp() {
         try {
-            phoneCameraMode = false;
-            phoneCameraPaused = false;
-            closePhoneCamera();
-            updateCameraSurfaceVisibility();
-            cameraSourceBadge.setText("CAMERA: RTSP • ĐANG KẾT NỐI");
             String url = RtspUrlBuilder.build(
                     text(fullUrlInput),
                     text(hostInput),
@@ -1584,31 +1658,44 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     text(userInput),
                     text(passwordInput),
                     text(pathInput));
-            cameraReconnectRequested = true;
-            saveCameraProfile();
-
-            RtspMediaSource.Factory factory = new RtspMediaSource.Factory()
-                    .setTimeoutMs(8_000)
-                    .setForceUseRtpTcp(tcpCheck.isChecked());
-            MediaItem item = MediaItem.fromUri(Uri.parse(url));
-            MediaSource source = factory.createMediaSource(item);
-
-            setMapVisible(false);
-            setSettingsVisible(false);
-            if (aiCoordinator != null) aiCoordinator.reset();
-            resetUiResults();
-            setStatus("Đang mở " + RtspUrlBuilder.redact(url)
-                    + (tcpCheck.isChecked() ? " • RTP/TCP" : " • UDP→TCP fallback"));
-            player.stop();
-            player.clearMediaItems();
-            player.setMediaSource(source);
-            player.prepare();
-            player.play();
+            rtspFallbackAttempted = false;
+            openRtsp(url);
         } catch (IllegalArgumentException error) {
             setStatus(error.getMessage());
         } catch (Throwable error) {
             setStatus("Không tạo được kết nối RTSP: " + error.getClass().getSimpleName());
         }
+    }
+
+    private void openRtsp(String url) {
+        phoneCameraMode = false;
+        phoneCameraPaused = false;
+        closePhoneCamera();
+        updateCameraSurfaceVisibility();
+        cameraSourceBadge.setText("CAMERA: RTSP • ĐANG KẾT NỐI");
+        activeRtspUrl = url;
+        cameraReconnectRequested = true;
+        cameraProfileSaved = saveCameraProfile();
+
+        RtspMediaSource.Factory factory = new RtspMediaSource.Factory()
+                .setTimeoutMs(8_000)
+                .setForceUseRtpTcp(tcpCheck.isChecked());
+        MediaItem item = MediaItem.fromUri(Uri.parse(url));
+        MediaSource source = factory.createMediaSource(item);
+
+        setMapVisible(false);
+        setSettingsVisible(false);
+        if (aiCoordinator != null) aiCoordinator.reset();
+        resetUiResults();
+        setStatus("Đang mở " + RtspUrlBuilder.redact(url)
+                + (tcpCheck.isChecked() ? " • RTP/TCP" : " • UDP→TCP fallback")
+                + (cameraProfileSaved ? " • đã lưu camera"
+                : " • chưa lưu được: kiểm tra khóa bảo mật Android"));
+        player.stop();
+        player.clearMediaItems();
+        player.setMediaSource(source);
+        player.prepare();
+        player.play();
     }
 
     private void disconnectRtsp() {
@@ -1673,7 +1760,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.5.1: Precision Fusion • Camera Lock • ưu tiên làn "
+                    setStatus("TrafficAI 2.5.2: Camera Connect • 3 Audio Modes • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1738,7 +1825,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.5.1 • PRECISION FUSION • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.5.2 • PRECISION FUSION • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -1798,7 +1885,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void speakStableResult(AiResult result) {
-        if (!ttsReady) return;
+        if (audioMode == AlertAudioMode.MUTE
+                || (audioMode == AlertAudioMode.VOICE && !ttsReady)) return;
         long now = SystemClock.elapsedRealtime();
         String signal = result.lightState == TrafficState.UNKNOWN
                 || !RecognitionReliability.shouldAnnounceSignal(result.lightConfidence)
@@ -1871,7 +1959,12 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void speak(String text, int queueMode) {
-        if (!voiceAlertsEnabled || !ttsReady || textToSpeech == null) return;
+        if (audioMode == AlertAudioMode.MUTE) return;
+        if (audioMode == AlertAudioMode.CHIME) {
+            playAlertChime(false);
+            return;
+        }
+        if (!ttsReady || textToSpeech == null) return;
         textToSpeech.speak(text, queueMode, null, "trafficai-" + SystemClock.elapsedRealtime());
     }
 
@@ -1928,14 +2021,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 updateCameraSurfaceVisibility();
                 cameraSourceBadge.setText("CAMERA: CHƯA CẤP QUYỀN");
                 setStatus("Cần cấp quyền Camera để dùng camera sau điện thoại");
-            }
-        } else if (requestCode == NEARBY_WIFI_PERMISSION_REQUEST) {
-            if (Build.VERSION.SDK_INT < 33
-                    || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
-                    == PackageManager.PERMISSION_GRANTED) {
-                startMacDiscovery(MacAddressPolicy.normalize(text(macInput)));
-            } else {
-                setStatus("Cần cho phép Thiết bị ở gần để tìm camera theo MAC trong LAN");
             }
         } else if (requestCode == LOCATION_PERMISSION_REQUEST && hasAnyLocationPermission()) {
             startGps();
@@ -2051,7 +2136,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         CarTelemetryStore.updateNavigation(
                 plan.destinationName, guidance.instruction,
                 guidance.distanceMeters, true);
-        if (guidance.shouldSpeak && ttsReady) {
+        if (guidance.shouldSpeak && audioMode != AlertAudioMode.MUTE) {
             speak(guidance.arrived ? guidance.instruction
                     : NavigationInstruction.withDistance(
                     guidance.instruction, guidance.distanceMeters),
@@ -2189,7 +2274,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 && (currentLandmarkHint.id != lastHintId
                 || now - lastHintSpeechAt >= 60_000L)) {
             String message = mapAlertSpeech(currentLandmarkHint);
-            if (ttsReady) speak(message, TextToSpeech.QUEUE_ADD);
+            if (audioMode != AlertAudioMode.MUTE) {
+                speak(message, TextToSpeech.QUEUE_ADD);
+            }
             lastHintId = currentLandmarkHint.id;
             lastHintSpeechAt = now;
         }
@@ -2213,8 +2300,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (parsed == null || parsed.endsLimit) return;
         if (parsed.limitKmh != speedLimitKmh) {
             setSpeedLimit(parsed.limitKmh, "Dữ liệu OSM gần xe");
-            if (ttsReady) speak("Giới hạn tốc độ sắp tới " + parsed.limitKmh,
-                    TextToSpeech.QUEUE_ADD);
+            if (audioMode != AlertAudioMode.MUTE) {
+                speak("Giới hạn tốc độ sắp tới " + parsed.limitKmh,
+                        TextToSpeech.QUEUE_ADD);
+            }
         }
     }
 
@@ -2496,6 +2585,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             textToSpeech.stop();
             textToSpeech.shutdown();
             textToSpeech = null;
+        }
+        if (alertToneGenerator != null) {
+            alertToneGenerator.release();
+            alertToneGenerator = null;
         }
         if (downloadingRegion != null) {
             downloadingRegion.setDownloadState(OfflineRegion.STATE_INACTIVE);

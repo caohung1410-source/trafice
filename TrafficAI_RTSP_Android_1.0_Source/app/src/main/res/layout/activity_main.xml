@@ -151,10 +151,25 @@
             android:layout_marginEnd="16dp"
             android:layout_marginTop="16dp"
             android:background="@drawable/map_control_button"
-            android:contentDescription="Bật hoặc tắt cảnh báo giọng nói"
+            android:contentDescription="Chuyển chế độ âm thanh cảnh báo"
             android:elevation="9dp"
             android:padding="15dp"
             android:src="@drawable/ic_volume_dark" />
+
+        <TextView
+            android:id="@+id/audioModeBadge"
+            android:layout_width="92dp"
+            android:layout_height="24dp"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="0dp"
+            android:layout_marginTop="78dp"
+            android:background="@drawable/result_background"
+            android:elevation="9dp"
+            android:gravity="center"
+            android:text="ĐỌC"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
 
         <LinearLayout
             android:layout_width="58dp"
@@ -420,7 +435,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:maxWidth="250dp"
-                android:text="TrafficAI 2.5.1 • sẵn sàng"
+                android:text="TrafficAI 2.5.2 • sẵn sàng"
                 android:textColor="#B7F3CB"
                 android:textSize="9sp" />
 
@@ -711,7 +726,12 @@
                         </LinearLayout>
                     </LinearLayout>
 
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingBottom="6dp" android:paddingTop="16dp" android:text="GIỌNG NÓI • GIỚI HẠN TỐC ĐỘ" android:textColor="#236A9D" android:textSize="12sp" android:textStyle="bold" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingBottom="6dp" android:paddingTop="16dp" android:text="ÂM THANH CẢNH BÁO • 3 CHẾ ĐỘ" android:textColor="#236A9D" android:textSize="12sp" android:textStyle="bold" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <Button android:id="@+id/audioChimeButton" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:text="ĐING ĐINH" android:textSize="9sp" android:textStyle="bold" />
+                        <Button android:id="@+id/audioVoiceButton" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:text="ĐỌC" android:textSize="9sp" android:textStyle="bold" />
+                        <Button android:id="@+id/audioMuteButton" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:text="TẮT TIẾNG" android:textSize="9sp" android:textStyle="bold" />
+                    </LinearLayout>
                     <Button android:id="@+id/testSpeechButton" android:layout_width="match_parent" android:layout_height="44dp" android:text="THỬ GIỌNG CẢNH BÁO" />
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                         <Button android:id="@+id/limit40Button" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="40" />
@@ -742,7 +762,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="42dp"
                 android:gravity="center"
-                android:text="Version: 2.5.1 • Precision + Camera Lock"
+                android:text="Version: 2.5.2 • Camera Connect + 3 Audio Modes"
                 android:textColor="#60626C"
                 android:textSize="12sp"
                 android:textStyle="bold" />

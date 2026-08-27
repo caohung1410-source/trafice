@@ -36,12 +36,11 @@ public final class MacCameraLocator {
         }
         int port = rtspPort > 0 && rtspPort <= 65535 ? rtspPort : 554;
 
-        if (isIpv4(lastHost)) {
-            probe(lastHost, port);
-            String cached = hostForMac(target);
-            if (lastHost.equals(cached) && probe(lastHost, port)) {
-                return Result.success(lastHost, true);
-            }
+        if (isIpv4(lastHost) && probe(lastHost, port)) {
+            // Android 10+ thường chặn /proc/net/arp và `ip neigh` với ứng dụng thường.
+            // IP đã được lưu cùng MAC và cổng RTSP đang trả lời là đường kết nối nhanh,
+            // không buộc người dùng cấp quyền Wi-Fi không liên quan đến socket LAN.
+            return Result.success(lastHost, true);
         }
 
         String cached = hostForMac(target);
@@ -244,7 +243,9 @@ public final class MacCameraLocator {
         }
 
         static Result success(String host, boolean usedLastHost) {
-            return new Result(host, "Đã khóa đúng MAC tại IP " + host, usedLastHost);
+            return new Result(host, usedLastHost
+                    ? "IP đã lưu đang hoạt động • khóa MAC tại " + host
+                    : "Đã tìm lại MAC tại IP " + host, usedLastHost);
         }
 
         static Result failure(String message) {

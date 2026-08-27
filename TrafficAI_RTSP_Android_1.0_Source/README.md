@@ -1,6 +1,15 @@
-# TrafficAI Drive 2.5.1 • Precision + Camera Lock ARM64
+# TrafficAI Drive 2.5.2 • Camera Connect + 3 Audio Modes ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.5.2: sửa kết nối camera và ba chế độ âm thanh
+
+- Nút loa chuyển tuần tự **Đọc → Đing đinh → Tắt tiếng**; trong Cài đặt có ba nút chọn trực tiếp và chế độ được lưu qua lần mở sau.
+- Chế độ Đing đinh phát hai âm ngắn thay cho mọi câu cảnh báo; có giới hạn tần suất để không dồn tiếng khi AI cập nhật liên tục.
+- Hồ sơ camera dùng ghi đồng bộ, chỉ báo “đã lưu” sau khi Android xác nhận ghi thành công; thoát app ngay sau kết nối không còn làm mất thông tin.
+- Kết nối theo MAC thử IP đã lưu và cổng RTSP trước nên mở nhanh trên Android hiện đại; không còn yêu cầu sai quyền Nearby Wi-Fi cho socket LAN.
+- Nếu IMOU luồng chính `subtype=0` không mở được, app tự thử một lần luồng phụ H.264 `subtype=1` và hiển thị chi tiết lỗi RTSP nếu vẫn thất bại.
+- Ô IP chấp nhận cả dạng `192.168.1.108:554` mà không ghép trùng port.
 
 ## Bản 2.5.1: nhận diện ổn định, icon bản đồ và lưu camera
 
@@ -9,7 +18,7 @@
 - Giữ track biển hiện tại khi một track mới chỉ nhỉnh hơn nhẹ, hạn chế đọc nhảy giữa các biển/cột đặt gần nhau.
 - Điểm Map Memory và OSM hiển thị icon riêng cho đèn, biển tốc độ, biển cảnh báo, camera, đường sắt và trạm thu phí.
 - Lưu IP, port, user, đường dẫn, TCP và nguồn camera; URL có credential và Safety Code được mã hóa AES-GCM bằng Android Keystore, không lưu bản rõ.
-- Có thể ghim MAC, thử IP cũ trước rồi quét tối đa một mạng `/24` và chỉ mở RTSP khi bảng láng giềng xác nhận đúng MAC. Một số bản Android có thể chặn đọc ARP; khi đó nên đặt DHCP Reservation trên router để khóa IP theo MAC.
+- Có thể ghim MAC, thử IP cũ trước rồi quét tối đa một mạng `/24`. Một số bản Android chặn đọc ARP; khi đó nên đặt DHCP Reservation trên router để khóa IP theo MAC.
 
 ## Bản 2.5: giao diện bản đồ toàn màn hình
 
@@ -115,7 +124,7 @@ Lần mở nền bản đồ đầu và lần bấm tải vùng offline cần In
 
 Phần cảnh báo phía trước chỉ dựa trên vị trí/kích thước tương đối trong ảnh, không đo khoảng cách hay TTC và không thay thế phanh tự động.
 
-Bản APK 2.5.1 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
+Bản APK 2.5.2 chỉ đóng gói ABI `arm64-v8a` cho Samsung S23 Ultra và phần lớn điện thoại Android 64-bit hiện đại. Việc bỏ thư viện x86/32-bit giúp giảm đáng kể dung lượng và tránh lỗi tải tệp lớn.
 
 ## Tối ưu thời gian thực trong bản 1.4
 
@@ -173,7 +182,7 @@ Chiều cao thực không thể đổi chính xác thành tọa độ pixel nế
 - Bộ đọc LED 7-segment 1–3 chữ số ở trái/phải/dưới cụm đèn.
 - Countdown chỉ hiển thị số đã nhìn thấy đủ nhiều frame; không chấp nhận chuỗi tăng bất thường; đổi màu, mất bảng hoặc số 0 thì xóa số cũ.
 - Đọc tiếng Việt bằng TextToSpeech; số ban đầu đọc một lần, từ 5 đến 1 đọc từng số.
-- Mật khẩu không được ghi vào log hoặc SharedPreferences dưới dạng bản rõ; 2.5.1 chỉ lưu ciphertext có khóa nằm trong Android Keystore.
+- Mật khẩu không được ghi vào log hoặc SharedPreferences dưới dạng bản rõ; hồ sơ chỉ lưu ciphertext có khóa nằm trong Android Keystore.
 - Giao diện khởi động độc lập với model: model lỗi/tải chậm không làm màn hình trắng hoặc làm ứng dụng văng.
 
 ## Cách dùng với IMOU C22E-A

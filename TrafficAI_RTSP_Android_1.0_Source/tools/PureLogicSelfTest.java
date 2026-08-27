@@ -1,4 +1,5 @@
 import vn.bachphuc.trafficai.CameraRotationPolicy;
+import vn.bachphuc.trafficai.AlertAudioMode;
 import vn.bachphuc.trafficai.CountdownTracker;
 import vn.bachphuc.trafficai.GeoMath;
 import vn.bachphuc.trafficai.LanePreference;
@@ -25,6 +26,22 @@ public final class PureLogicSelfTest {
                 "Mật khẩu giữ chỗ phải được URI-encode");
         require(!RtspUrlBuilder.redact(url).contains("DUMMY%20PASSWORD%20WITH%20SPACE"),
                 "Log không được lộ mật khẩu giữ chỗ");
+        String embeddedPortUrl = RtspUrlBuilder.build(
+                "", "192.168.1.108:8554", "554", "admin", "DUMMY",
+                "/cam/realmonitor?channel=1&subtype=0");
+        require(embeddedPortUrl.contains("@192.168.1.108:8554/"),
+                "IP có sẵn port không được ghép thành hai port");
+        require(RtspUrlBuilder.isImouMainStream(embeddedPortUrl)
+                        && RtspUrlBuilder.withImouSubtype(embeddedPortUrl, 1)
+                        .contains("subtype=1"),
+                "Kết nối lỗi luồng chính phải chuyển được sang IMOU SUB 1");
+        require(AlertAudioMode.VOICE.next() == AlertAudioMode.CHIME
+                        && AlertAudioMode.CHIME.next() == AlertAudioMode.MUTE
+                        && AlertAudioMode.MUTE.next() == AlertAudioMode.VOICE,
+                "Nút loa phải chuyển đủ Đọc / Đing đinh / Tắt tiếng");
+        require(AlertAudioMode.fromStored("chime", true) == AlertAudioMode.CHIME
+                        && AlertAudioMode.fromStored("", false) == AlertAudioMode.MUTE,
+                "Chế độ âm thanh phải khôi phục đúng và tương thích dữ liệu cũ");
         require("A0:B1:C2:D3:E4:F5".equals(
                         MacAddressPolicy.normalize("a0-b1-c2-d3-e4-f5")),
                 "MAC phải được chuẩn hóa thống nhất để ghim camera");

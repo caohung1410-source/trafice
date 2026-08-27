@@ -31,8 +31,17 @@ public final class CameraProfileStore {
                 .getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    public synchronized void save(Profile profile) {
-        if (profile == null) return;
+    public synchronized boolean save(Profile profile) {
+        if (profile == null) return false;
+        String encryptedFullUrl;
+        String encryptedPassword;
+        try {
+            encryptedFullUrl = encryptUnlessEmpty(profile.fullUrl, true);
+            encryptedPassword = encryptUnlessEmpty(profile.password, false);
+        } catch (Exception ignored) {
+            // Không ghi một hồ sơ nửa vời nếu Keystore tạm thời không hoạt động.
+            return false;
+        }
         SharedPreferences.Editor editor = preferences.edit()
                 .putString("host", safe(profile.host))
                 .putString("port", safe(profile.port))
@@ -42,9 +51,10 @@ public final class CameraProfileStore {
                 .putBoolean("rtp_tcp", profile.rtpTcp)
                 .putBoolean("auto_reconnect", profile.autoReconnect)
                 .putString("source", profile.phoneCamera ? "phone" : "rtsp");
-        putEncrypted(editor, "full_url_ciphertext", profile.fullUrl);
-        putEncrypted(editor, "password_ciphertext", profile.password);
-        editor.apply();
+        putEncryptedValue(editor, "full_url_ciphertext", encryptedFullUrl);
+        putEncryptedValue(editor, "password_ciphertext", encryptedPassword);
+        // commit() là đồng bộ: người dùng thoát/đóng app ngay sau khi kết nối vẫn không mất hồ sơ.
+        return editor.commit();
     }
 
     public synchronized Profile load() {
@@ -62,19 +72,18 @@ public final class CameraProfileStore {
                 "phone".equals(preferences.getString("source", "rtsp")));
     }
 
-    private void putEncrypted(SharedPreferences.Editor editor, String key, String value) {
+    private void putEncryptedValue(SharedPreferences.Editor editor, String key, String value) {
+        if (value == null || value.isEmpty()) {
+            editor.remove(key);
+        } else {
+            editor.putString(key, value);
+        }
+    }
+
+    private String encryptUnlessEmpty(String value, boolean trim) throws Exception {
         String plain = value == null ? "" : value;
-        if (!"password_ciphertext".equals(key)) plain = plain.trim();
-        if (plain.isEmpty()) {
-            editor.remove(key);
-            return;
-        }
-        try {
-            editor.putString(key, encrypt(plain));
-        } catch (Exception ignored) {
-            // Không hạ cấp sang lưu bản rõ khi Keystore tạm thời không hoạt động.
-            editor.remove(key);
-        }
+        if (trim) plain = plain.trim();
+        return plain.isEmpty() ? "" : encrypt(plain);
     }
 
     private String encrypt(String plain) throws Exception {

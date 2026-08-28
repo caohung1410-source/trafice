@@ -30,38 +30,46 @@ public final class SevenSegmentReader {
         List<RectF> candidates = new ArrayList<>();
         candidates.add(clamp(new RectF(
                 light.right + h * 0.05f, light.top - h * 0.25f,
-                light.right + h * 3.6f, light.bottom + h * 0.25f), frame));
+                light.right + h * 5.2f, light.bottom + h * 0.45f), frame));
         candidates.add(clamp(new RectF(
-                light.left - h * 3.6f, light.top - h * 0.25f,
-                light.left - h * 0.05f, light.bottom + h * 0.25f), frame));
+                light.left - h * 5.2f, light.top - h * 0.25f,
+                light.left - h * 0.05f, light.bottom + h * 0.45f), frame));
         candidates.add(clamp(new RectF(
-                light.left - h * 1.4f, light.bottom + h * 0.02f,
-                light.right + h * 1.4f, light.bottom + h * 1.65f), frame));
+                light.left - h * 2.0f, light.bottom + h * 0.02f,
+                light.right + h * 2.0f, light.bottom + h * 2.2f), frame));
+        candidates.add(clamp(new RectF(
+                light.left - h * 2.8f, light.top - h * 0.40f,
+                light.right + h * 2.8f, light.bottom + h * 2.0f), frame));
 
         Result best = Result.none();
         for (RectF candidate : candidates) {
             if (candidate.width() < 8 || candidate.height() < 8) continue;
-            Result current = readCandidate(frame, candidate, state);
+            Result current = readCandidate(frame, candidate, state, light);
             if (current.confidence > best.confidence) best = current;
         }
-        return best.confidence >= 0.50f ? best : Result.none();
+        return best.confidence >= 0.44f ? best : Result.none();
     }
 
-    private Result readCandidate(Bitmap frame, RectF roi, TrafficState state) {
+    private Result readCandidate(
+            Bitmap frame, RectF roi, TrafficState state, RectF lightBox) {
         boolean[] mask = new boolean[MASK_W * MASK_H];
         int lit = 0;
+        RectF excludedLight = new RectF(lightBox);
+        excludedLight.inset(-lightBox.width() * 0.16f, -lightBox.height() * 0.16f);
         for (int y = 0; y < MASK_H; y++) {
             int sy = Math.min(frame.getHeight() - 1,
                     Math.max(0, (int) (roi.top + (y + 0.5f) * roi.height() / MASK_H)));
             for (int x = 0; x < MASK_W; x++) {
                 int sx = Math.min(frame.getWidth() - 1,
                         Math.max(0, (int) (roi.left + (x + 0.5f) * roi.width() / MASK_W)));
-                boolean on = isLed(frame.getPixel(sx, sy), state);
+                boolean on = !excludedLight.contains(sx, sy)
+                        && isLed(frame.getPixel(sx, sy), state);
                 mask[y * MASK_W + x] = on;
                 if (on) lit++;
             }
         }
-        if (lit < 22 || lit > MASK_W * MASK_H * 0.45f) return Result.none();
+        lit = removeIsolatedPixels(mask);
+        if (lit < 14 || lit > MASK_W * MASK_H * 0.50f) return Result.none();
 
         int[] bounds = litBounds(mask);
         if (bounds == null) return Result.none();
@@ -192,11 +200,37 @@ public final class SevenSegmentReader {
         int b = Color.blue(color);
         int max = Math.max(r, Math.max(g, b));
         int min = Math.min(r, Math.min(g, b));
-        if (max < 115 || max - min < 25) return false;
-        if (state == TrafficState.RED) return r > 140 && r > g * 1.16f && r > b * 1.18f;
-        if (state == TrafficState.GREEN) return g > 125 && g > r * 1.06f && g > b * 1.02f;
-        if (state == TrafficState.YELLOW) return r > 130 && g > 105 && b < Math.min(r, g) * 0.82f;
+        if (max < 100 || max - min < 20) return false;
+        if (state == TrafficState.RED) return r > 122 && r > g * 1.12f && r > b * 1.14f;
+        if (state == TrafficState.GREEN) {
+            return g > 108 && g > r * 1.08f && b < g * 1.30f;
+        }
+        if (state == TrafficState.YELLOW) return r > 118 && g > 96 && b < Math.min(r, g) * 0.86f;
         return max > 185 && max - min > 45;
+    }
+
+    private int removeIsolatedPixels(boolean[] mask) {
+        boolean[] original = mask.clone();
+        int remaining = 0;
+        for (int y = 0; y < MASK_H; y++) {
+            for (int x = 0; x < MASK_W; x++) {
+                int index = y * MASK_W + x;
+                if (!original[index]) continue;
+                int neighbours = 0;
+                for (int dy = -1; dy <= 1; dy++) {
+                    int ny = y + dy;
+                    if (ny < 0 || ny >= MASK_H) continue;
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int nx = x + dx;
+                        if ((dx == 0 && dy == 0) || nx < 0 || nx >= MASK_W) continue;
+                        if (original[ny * MASK_W + nx]) neighbours++;
+                    }
+                }
+                if (neighbours == 0) mask[index] = false;
+                else remaining++;
+            }
+        }
+        return remaining;
     }
 
     private RectF clamp(RectF rect, Bitmap bitmap) {

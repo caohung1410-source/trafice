@@ -35,6 +35,7 @@ import android.os.SystemClock;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.util.Size;
+import android.view.Gravity;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -43,6 +44,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -109,6 +111,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private PlayerView playerView;
     private TextureView phoneCameraView;
     private DetectionOverlayView overlayView;
+    private FrameLayout cameraPreviewFrame;
+    private TextView cameraPreviewLabel;
+    private CameraHudMiniMapView cameraHudMiniMap;
+    private View mapZoomControls;
+    private Button driveViewSwitchButton;
     private View settingsPanel;
     private View settingsHomeList;
     private View settingsDetailsPanel;
@@ -244,7 +251,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private MapView baseMapView;
     private MapLibreMap baseMap;
     private boolean mapStyleReady;
-    private boolean mapVisible = true;
+    private boolean mapVisible;
+    private boolean cameraHudNavigationActive;
+    private String cameraHudInstruction = "CHẠM ĐỂ MỞ BẢN ĐỒ";
+    private double cameraHudNavigationDistance = Double.NaN;
     private long lastMapCameraAt;
     private OfflineManager offlineManager;
     private OfflineRegion downloadingRegion;
@@ -354,6 +364,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         phoneCameraView = findViewById(R.id.phoneCameraView);
         phoneCameraView.setSurfaceTextureListener(phoneCameraTextureListener);
         overlayView = findViewById(R.id.overlayView);
+        cameraPreviewFrame = findViewById(R.id.cameraPreviewFrame);
+        cameraPreviewLabel = findViewById(R.id.cameraPreviewLabel);
+        cameraHudMiniMap = findViewById(R.id.cameraHudMiniMap);
+        mapZoomControls = findViewById(R.id.mapZoomControls);
+        driveViewSwitchButton = findViewById(R.id.driveViewSwitchButton);
         settingsPanel = findViewById(R.id.settingsPanel);
         settingsHomeList = findViewById(R.id.settingsHomeList);
         settingsDetailsPanel = findViewById(R.id.settingsDetailsPanel);
@@ -462,6 +477,11 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         closeIncident.setOnClickListener(view -> showIncidentOverlay(false));
         zoomIn.setOnClickListener(view -> zoomMap(true));
         zoomOut.setOnClickListener(view -> zoomMap(false));
+        driveViewSwitchButton.setOnClickListener(view -> toggleMap());
+        cameraHudMiniMap.setOnClickListener(view -> setMapVisible(true));
+        cameraPreviewFrame.setOnClickListener(view -> {
+            if (mapVisible) setMapVisible(false);
+        });
         soundToggleButton.setOnClickListener(view -> setAudioMode(audioMode.next(), true));
         subStream.setOnClickListener(view -> setImouSubtype(1));
         mainStream.setOnClickListener(view -> setImouSubtype(0));
@@ -544,6 +564,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 "routing", "https://router.project-osrm.org"));
         overpassUrlInput.setText(preferences.getString(
                 "overpass", "https://overpass-api.de/api/interpreter"));
+        mapVisible = preferences.getBoolean("drive_map_visible", false);
+        applyMapVisibility();
+        updateCameraHudMiniMap();
     }
 
     private void restoreDistanceCalibration() {
@@ -753,7 +776,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         + "Android Keystore trên điện thoại, không đồng bộ lên máy chủ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
-                "TrafficAI 2.6.1 dùng giao diện lái xe tối giản, chỉ hiện kết quả đã xác nhận.",
+                "TrafficAI 2.6.2 dùng Camera HUD và chuyển tức thời giữa lái xe với bản đồ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
                 "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
@@ -1016,6 +1039,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         currentDestination = destination;
         currentRoutePlan = plan;
         navigationSession.setPlan(plan);
+        cameraHudNavigationActive = true;
+        cameraHudInstruction = "ĐẾN " + shortPlaceName(destination.displayName);
+        cameraHudNavigationDistance = plan.distanceMeters;
+        updateCameraHudMiniMap();
         offRouteSince = 0L;
         navigationInfo.setText((replan ? "Đã tính lại • " : "")
                 + shortPlaceName(destination.displayName) + " • "
@@ -1051,6 +1078,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         navigationSession.clear();
         currentRoutePlan = null;
         currentDestination = null;
+        cameraHudNavigationActive = false;
+        cameraHudInstruction = "CHẠM ĐỂ MỞ BẢN ĐỒ";
+        cameraHudNavigationDistance = Double.NaN;
+        updateCameraHudMiniMap();
         offRouteSince = 0L;
         navigationInfo.setText("Chưa chọn điểm đến");
         tripSummaryText.setText("GPS sẽ hiển thị quãng đường và thời gian dự kiến");
@@ -1147,7 +1178,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.6.1 • "
+        String metadata = "{\"name\":\"TrafficAI 2.6.2 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -1740,15 +1771,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private void updateCameraSurfaceVisibility() {
-        boolean showCamera = !mapVisible;
-        // Khi xem bản đồ, giữ nguồn đang dùng ở INVISIBLE để SurfaceTexture tiếp tục nhận
-        // khung hình và cảnh báo giọng nói không bị dừng.
-        playerView.setVisibility(!phoneCameraMode
-                ? showCamera ? View.VISIBLE : View.INVISIBLE
-                : View.GONE);
-        phoneCameraView.setVisibility(phoneCameraMode
-                ? showCamera ? View.VISIBLE : View.INVISIBLE
-                : View.GONE);
+        // Camera luôn nhận khung hình. Ở màn hình bản đồ, khung này co thành cửa sổ LIVE;
+        // AI và cảnh báo âm thanh vì vậy không bị ngắt hoặc phải kết nối lại.
+        playerView.setVisibility(phoneCameraMode ? View.GONE : View.VISIBLE);
+        phoneCameraView.setVisibility(phoneCameraMode ? View.VISIBLE : View.GONE);
     }
 
     private void connectRtsp() {
@@ -1865,7 +1891,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.6.1: Clean Driving UI • ưu tiên làn "
+                    setStatus("TrafficAI 2.6.2: Camera HUD • ưu tiên làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1931,7 +1957,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.6.1 • CLEAN UI • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.6.2 • CAMERA HUD • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -2199,6 +2225,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void setMapVisible(boolean visible) {
         mapVisible = visible;
+        getSharedPreferences(PROVIDER_PREFS, MODE_PRIVATE).edit()
+                .putBoolean("drive_map_visible", mapVisible)
+                .apply();
         applyMapVisibility();
         if (mapVisible && lastLocation != null) {
             lastMapCameraAt = 0L;
@@ -2213,12 +2242,45 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void applyMapVisibility() {
         baseMapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
+        FrameLayout.LayoutParams cameraLayout = mapVisible
+                ? new FrameLayout.LayoutParams(dp(154), dp(96), Gravity.TOP | Gravity.END)
+                : new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.FILL);
+        if (mapVisible) {
+            cameraLayout.topMargin = dp(88);
+            cameraLayout.rightMargin = dp(10);
+            cameraPreviewFrame.setBackgroundResource(R.drawable.camera_preview_border);
+            cameraPreviewFrame.setElevation(dp(12));
+        } else {
+            cameraPreviewFrame.setBackgroundColor(Color.rgb(8, 11, 16));
+            cameraPreviewFrame.setElevation(0f);
+        }
+        cameraPreviewFrame.setLayoutParams(cameraLayout);
         updateCameraSurfaceVisibility();
         overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         visionQualityText.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         cameraSourceBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        cameraPreviewLabel.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
+        cameraHudMiniMap.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        mapZoomControls.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
+        driveViewSwitchButton.setText(mapVisible ? "‹  LÁI XE" : "BẢN ĐỒ  ›");
+        driveViewSwitchButton.setContentDescription(mapVisible
+                ? "Chuyển sang màn hình lái xe Camera HUD"
+                : "Chuyển sang bản đồ toàn màn hình");
         mapButton.setText(mapVisible ? "CAMERA" : "BẢN ĐỒ");
+        cameraPreviewFrame.post(() -> {
+            if (phoneCameraMode) {
+                configurePhoneCameraTransform(
+                        phoneCameraView.getWidth(), phoneCameraView.getHeight());
+            }
+        });
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void requestGpsPermission() {
@@ -2354,10 +2416,20 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void updateNavigationGuidance(Location location) {
         RoutePlan plan = navigationSession.getPlan();
-        if (plan == null || location == null) return;
+        if (plan == null || location == null) {
+            cameraHudNavigationActive = false;
+            cameraHudInstruction = "CHẠM ĐỂ MỞ BẢN ĐỒ";
+            cameraHudNavigationDistance = Double.NaN;
+            updateCameraHudMiniMap();
+            return;
+        }
         NavigationSession.Guidance guidance = navigationSession.update(
                 location.getLatitude(), location.getLongitude());
         if (!guidance.active) return;
+        cameraHudNavigationActive = !guidance.arrived;
+        cameraHudInstruction = guidance.instruction;
+        cameraHudNavigationDistance = guidance.distanceMeters;
+        updateCameraHudMiniMap();
         String text = guidance.arrived
                 ? guidance.instruction
                 : guidance.instruction + " • " + formatDistance(guidance.distanceMeters);
@@ -2375,6 +2447,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             navigationSession.clear();
             currentRoutePlan = null;
             currentDestination = null;
+            cameraHudNavigationActive = false;
+            cameraHudInstruction = "ĐÃ ĐẾN NƠI";
+            cameraHudNavigationDistance = 0d;
+            updateCameraHudMiniMap();
             CarTelemetryStore.updateNavigation("", "Đã đến nơi", 0d, false);
             redrawMapAnnotations();
             setStatus("Đã đến điểm đến");
@@ -2392,6 +2468,16 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         } else {
             offRouteSince = 0L;
         }
+    }
+
+    private void updateCameraHudMiniMap() {
+        if (cameraHudMiniMap == null) return;
+        cameraHudMiniMap.update(
+                lastTravelBearing,
+                lastLocation != null,
+                cameraHudNavigationActive,
+                cameraHudInstruction,
+                cameraHudNavigationDistance);
     }
 
     private void updateMapPosition(Location location) {
@@ -2763,6 +2849,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         }
         if (navigationPanel != null && navigationPanel.getVisibility() == View.VISIBLE) {
             showNavigationPanel(false);
+            return;
+        }
+        if (mapVisible) {
+            setMapVisible(false);
             return;
         }
         super.onBackPressed();

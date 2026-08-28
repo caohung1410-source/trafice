@@ -14,6 +14,8 @@ import java.util.Locale;
 
 public final class DetectionOverlayView extends View {
     private final Paint boxPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint cornerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -25,7 +27,12 @@ public final class DetectionOverlayView extends View {
     public DetectionOverlayView(Context context, AttributeSet attrs) {
         super(context, attrs);
         boxPaint.setStyle(Paint.Style.STROKE);
-        boxPaint.setStrokeWidth(dp(2.5f));
+        boxPaint.setStrokeWidth(dp(1.3f));
+        glowPaint.setStyle(Paint.Style.STROKE);
+        glowPaint.setStrokeWidth(dp(5.5f));
+        cornerPaint.setStyle(Paint.Style.STROKE);
+        cornerPaint.setStrokeCap(Paint.Cap.SQUARE);
+        cornerPaint.setStrokeWidth(dp(3.2f));
         labelPaint.setColor(Color.WHITE);
         labelPaint.setTextSize(dp(12));
         labelPaint.setFakeBoldText(true);
@@ -60,7 +67,12 @@ public final class DetectionOverlayView extends View {
 
         for (Detection detection : detections) {
             int color = colorFor(detection.kind);
-            boxPaint.setColor(color);
+            boxPaint.setColor(Color.argb(
+                    185, Color.red(color), Color.green(color), Color.blue(color)));
+            glowPaint.setColor(Color.argb(
+                    76, Color.red(color), Color.green(color), Color.blue(color)));
+            glowPaint.setShadowLayer(dp(7f), 0f, 0f, color);
+            cornerPaint.setColor(color);
             labelBackground.setColor(Color.argb(205, Color.red(color), Color.green(color), Color.blue(color)));
 
             RectF src = detection.box;
@@ -69,7 +81,9 @@ public final class DetectionOverlayView extends View {
                     offsetY + src.top * scale,
                     offsetX + src.right * scale,
                     offsetY + src.bottom * scale);
-            canvas.drawRoundRect(dst, dp(5), dp(5), boxPaint);
+            canvas.drawRoundRect(dst, dp(7), dp(7), glowPaint);
+            canvas.drawRoundRect(dst, dp(7), dp(7), boxPaint);
+            drawCornerBrackets(canvas, dst);
 
             String label = labelFor(detection);
             float textWidth = labelPaint.measureText(label);
@@ -81,6 +95,19 @@ public final class DetectionOverlayView extends View {
             canvas.drawRoundRect(tag, dp(4), dp(4), labelBackground);
             canvas.drawText(label, tag.left + dp(6), tag.bottom - dp(6), labelPaint);
         }
+    }
+
+    private void drawCornerBrackets(Canvas canvas, RectF box) {
+        float length = Math.min(dp(18f), Math.min(box.width(), box.height()) * .28f);
+        if (length < dp(4f)) return;
+        canvas.drawLine(box.left, box.top, box.left + length, box.top, cornerPaint);
+        canvas.drawLine(box.left, box.top, box.left, box.top + length, cornerPaint);
+        canvas.drawLine(box.right, box.top, box.right - length, box.top, cornerPaint);
+        canvas.drawLine(box.right, box.top, box.right, box.top + length, cornerPaint);
+        canvas.drawLine(box.left, box.bottom, box.left + length, box.bottom, cornerPaint);
+        canvas.drawLine(box.left, box.bottom, box.left, box.bottom - length, cornerPaint);
+        canvas.drawLine(box.right, box.bottom, box.right - length, box.bottom, cornerPaint);
+        canvas.drawLine(box.right, box.bottom, box.right, box.bottom - length, cornerPaint);
     }
 
     private int colorFor(Detection.Kind kind) {

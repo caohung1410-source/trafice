@@ -29,6 +29,7 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/OfflineGpsView.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/GeoMath.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkHint.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/EarlySignalAlertPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkMemoryStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoutePlan.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationInstruction.java"
@@ -55,6 +56,18 @@ if command -v xmllint >/dev/null 2>&1; then
   while IFS= read -r -d '' xml; do
     xmllint --noout "$xml"
   done < <(find "$project_root/app/src/main" -name '*.xml' -print0)
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$project_root" <<'PY'
+from pathlib import Path
+import sys
+import xml.etree.ElementTree as ET
+
+root = Path(sys.argv[1]) / "app" / "src" / "main"
+for xml_file in root.rglob("*.xml"):
+    ET.parse(xml_file)
+PY
 fi
 
 # Hồ sơ camera được phép lưu credential nhưng bắt buộc là ciphertext qua Android Keystore.
@@ -125,4 +138,8 @@ grep -q 'cameraPreviewFrame.setLayoutParams' "$project_root/app/src/main/java/vn
 grep -q 'putBoolean("drive_map_visible"' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 grep -q 'class CameraHudMiniMapView' "$project_root/app/src/main/java/vn/bachphuc/trafficai/CameraHudMiniMapView.java"
 grep -q 'TTC' "$project_root/app/src/main/java/vn/bachphuc/trafficai/DetectionOverlayView.java"
-echo "verify_project: PASS • TrafficAI 2.6.2 • Camera HUD"
+grep -q 'onConfigurationChanged' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'android:screenOrientation="fullSensor"' "$project_root/app/src/main/AndroidManifest.xml"
+grep -q 'EarlySignalAlertPolicy.shouldAnnouncePresence' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
+grep -q 'PHÓNG ĐÈN 150 M' "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
+echo "verify_project: PASS • TrafficAI 2.6.3 • Adaptive HUD & Early Signal"

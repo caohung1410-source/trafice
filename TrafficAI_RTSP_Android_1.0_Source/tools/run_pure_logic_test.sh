@@ -22,6 +22,8 @@ sources=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/SpeedSignPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/LanePreference.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/GeoMath.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/EarlySignalAlertPolicy.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/LandmarkHint.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/RoutePlan.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationInstruction.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationSession.java"

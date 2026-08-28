@@ -3,8 +3,10 @@ import vn.bachphuc.trafficai.AlertAudioMode;
 import vn.bachphuc.trafficai.CountdownTracker;
 import vn.bachphuc.trafficai.DistanceWarningPolicy;
 import vn.bachphuc.trafficai.DistanceWarningState;
+import vn.bachphuc.trafficai.EarlySignalAlertPolicy;
 import vn.bachphuc.trafficai.GeoMath;
 import vn.bachphuc.trafficai.LeadVehicleDistanceEstimator;
+import vn.bachphuc.trafficai.LandmarkHint;
 import vn.bachphuc.trafficai.LanePreference;
 import vn.bachphuc.trafficai.MacAddressPolicy;
 import vn.bachphuc.trafficai.NavigationInstruction;
@@ -45,6 +47,20 @@ public final class PureLogicSelfTest {
         require(AlertAudioMode.fromStored("chime", true) == AlertAudioMode.CHIME
                         && AlertAudioMode.fromStored("", false) == AlertAudioMode.MUTE,
                 "Chế độ âm thanh phải khôi phục đúng và tương thích dữ liệu cũ");
+        require(EarlySignalAlertPolicy.shouldAnnouncePresence(150d, 35)
+                        && !EarlySignalAlertPolicy.shouldAnnouncePresence(190d, 35)
+                        && !EarlySignalAlertPolicy.shouldAnnouncePresence(150d, 0),
+                "Cảnh báo vị trí đèn phải phát quanh mốc 150 m khi xe đang tiến tới");
+        require(EarlySignalAlertPolicy.shouldUseFarCameraScan(150d)
+                        && !EarlySignalAlertPolicy.shouldUseFarCameraScan(80d),
+                "Camera phải phóng vùng đèn sớm nhưng quay lại chế độ gần khi dưới 100 m");
+        require(EarlySignalAlertPolicy.presenceSpeech().contains("một trăm năm mươi mét"),
+                "Câu cảnh báo sớm phải nói rõ mốc 150 m");
+        require(new LandmarkHint(1L, LandmarkHint.TYPE_LIGHT, "Đèn",
+                        .68f, .34f, 215d, 1).isActive()
+                        && !new LandmarkHint(2L, LandmarkHint.TYPE_LIGHT, "Đèn",
+                        .68f, .34f, 221d, 1).isActive(),
+                "Gợi ý đèn phải kích hoạt trước 220 m để camera kịp quét xa");
         require("A0:B1:C2:D3:E4:F5".equals(
                         MacAddressPolicy.normalize("a0-b1-c2-d3-e4-f5")),
                 "MAC phải được chuẩn hóa thống nhất để ghim camera");

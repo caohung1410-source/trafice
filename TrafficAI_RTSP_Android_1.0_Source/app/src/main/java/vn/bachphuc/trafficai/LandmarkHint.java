@@ -34,7 +34,7 @@ public final class LandmarkHint {
     }
 
     public boolean isActive() {
-        return id >= 0L && distanceMeters <= 160d;
+        return id >= 0L && EarlySignalAlertPolicy.shouldPrefetch(distanceMeters);
     }
 
     public boolean expectsLight() {

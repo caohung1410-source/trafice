@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Matrix;
@@ -116,6 +117,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private CameraHudMiniMapView cameraHudMiniMap;
     private View mapZoomControls;
     private Button driveViewSwitchButton;
+    private View speedHudContainer;
+    private View quickControlStack;
+    private View assistantActionButton;
     private View settingsPanel;
     private View settingsHomeList;
     private View settingsDetailsPanel;
@@ -369,6 +373,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         cameraHudMiniMap = findViewById(R.id.cameraHudMiniMap);
         mapZoomControls = findViewById(R.id.mapZoomControls);
         driveViewSwitchButton = findViewById(R.id.driveViewSwitchButton);
+        speedHudContainer = findViewById(R.id.speedHudContainer);
+        quickControlStack = findViewById(R.id.quickControlStack);
+        assistantActionButton = findViewById(R.id.assistantActionButton);
         settingsPanel = findViewById(R.id.settingsPanel);
         settingsHomeList = findViewById(R.id.settingsHomeList);
         settingsDetailsPanel = findViewById(R.id.settingsDetailsPanel);
@@ -449,7 +456,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         Button limit80 = findViewById(R.id.limit80Button);
         View quickSearch = findViewById(R.id.quickSearchButton);
         View quickMenu = findViewById(R.id.quickMenuButton);
-        View assistantAction = findViewById(R.id.assistantActionButton);
         View closeQuickMenu = findViewById(R.id.closeQuickMenuButton);
         View overlaySearch = findViewById(R.id.overlaySearchButton);
         View overlayReport = findViewById(R.id.overlayReportButton);
@@ -469,7 +475,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             showQuickMenu(false);
             showNavigationPanel(true);
         });
-        assistantAction.setOnClickListener(view -> showIncidentOverlay(true));
+        assistantActionButton.setOnClickListener(view -> showIncidentOverlay(true));
         overlayReport.setOnClickListener(view -> {
             showQuickMenu(false);
             showIncidentOverlay(true);
@@ -776,7 +782,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         + "Android Keystore trên điện thoại, không đồng bộ lên máy chủ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
-                "TrafficAI 2.6.2 dùng Camera HUD và chuyển tức thời giữa lái xe với bản đồ.",
+                "TrafficAI 2.6.3 tự tối ưu HUD cho cả màn hình dọc và ngang.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
                 "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
@@ -1178,7 +1184,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.6.2 • "
+        String metadata = "{\"name\":\"TrafficAI 2.6.3 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -1348,7 +1354,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             setStatus("Cần vị trí GPS trước khi nạp biển và đèn OSM");
             return;
         }
-        if (mapStyleReady) redrawMapAnnotations();
         long now = SystemClock.elapsedRealtime();
         double moved = Double.isNaN(lastTrafficFetchLat) ? Double.POSITIVE_INFINITY
                 : GeoMath.distanceMeters(
@@ -1357,10 +1362,15 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (trafficDataBusy || (!force && moved < 2_000d
                 && now - lastTrafficFetchAt < 30L * 60L * 1_000L)) return;
 
+        if (mapStyleReady) redrawMapAnnotations();
         saveProviderSettings();
         String endpoint = text(overpassUrlInput);
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
+        // Khóa vùng vừa yêu cầu ngay khi bắt đầu để GPS 700 ms không tạo nhiều request.
+        lastTrafficFetchLat = latitude;
+        lastTrafficFetchLon = longitude;
+        lastTrafficFetchAt = now;
         trafficDataBusy = true;
         refreshTrafficMapButton.setEnabled(false);
         refreshTrafficMapButton.setText("ĐANG NẠP OSM…");
@@ -1391,6 +1401,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 runOnUiThread(() -> {
                     if (destroyed) return;
                     trafficDataBusy = false;
+                    // Sau lỗi mạng chỉ thử lại sau khoảng hai phút, không lặp theo mỗi GPS.
+                    lastTrafficFetchAt = SystemClock.elapsedRealtime()
+                            - 28L * 60L * 1_000L;
                     refreshTrafficMapButton.setEnabled(true);
                     refreshTrafficMapButton.setText("THỬ LẠI NẠP ĐIỂM CẢNH BÁO");
                     setStatus("Không nạp được OSM mới: " + safeMessage(error)
@@ -1891,7 +1904,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.6.2: Camera HUD • ưu tiên làn "
+                    setStatus("TrafficAI 2.6.3: Adaptive HUD • cảnh báo đèn sớm 150 m • làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1957,7 +1970,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
         }
         lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.6.2 • CAMERA HUD • " + result.engineStatus + " • "
+        aiBadge.setText("ADAS 2.6.3 • EARLY SIGNAL • " + result.engineStatus + " • "
                 + String.format(Locale.US, "%.1f fps", smoothedAiFps)
                 + (currentLandmarkHint.isActive() ? " • NHỚ "
                 + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
@@ -2094,8 +2107,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             return;
         }
         if (currentLandmarkHint != null && currentLandmarkHint.isActive()) {
-            roadAlertBanner.setText(currentLandmarkHint.label.toUpperCase(
-                    new Locale("vi", "VN")) + " • "
+            String title = currentLandmarkHint.expectsLight()
+                    ? "PHÍA TRƯỚC CÓ TÍN HIỆU ĐÈN"
+                    : currentLandmarkHint.label.toUpperCase(new Locale("vi", "VN"));
+            roadAlertBanner.setText(title + " • "
                     + Math.round(currentLandmarkHint.distanceMeters) + " m");
             roadAlertBanner.setVisibility(View.VISIBLE);
             return;
@@ -2242,15 +2257,18 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private void applyMapVisibility() {
         baseMapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         mapView.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
+        boolean landscape = isLandscape();
         FrameLayout.LayoutParams cameraLayout = mapVisible
-                ? new FrameLayout.LayoutParams(dp(154), dp(96), Gravity.TOP | Gravity.END)
+                ? new FrameLayout.LayoutParams(
+                dp(landscape ? 224 : 154), dp(landscape ? 126 : 96),
+                Gravity.TOP | Gravity.END)
                 : new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 Gravity.FILL);
         if (mapVisible) {
-            cameraLayout.topMargin = dp(88);
-            cameraLayout.rightMargin = dp(10);
+            cameraLayout.topMargin = dp(landscape ? 76 : 88);
+            cameraLayout.rightMargin = dp(landscape ? 12 : 10);
             cameraPreviewFrame.setBackgroundResource(R.drawable.camera_preview_border);
             cameraPreviewFrame.setElevation(dp(12));
         } else {
@@ -2271,6 +2289,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 ? "Chuyển sang màn hình lái xe Camera HUD"
                 : "Chuyển sang bản đồ toàn màn hình");
         mapButton.setText(mapVisible ? "CAMERA" : "BẢN ĐỒ");
+        applyResponsiveHudLayout();
         cameraPreviewFrame.post(() -> {
             if (phoneCameraMode) {
                 configurePhoneCameraTransform(
@@ -2281,6 +2300,87 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private boolean isLandscape() {
+        return getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
+    /** Bố trí lại các lớp HUD mà không khởi động lại camera, RTSP hay AI. */
+    private void applyResponsiveHudLayout() {
+        boolean landscape = isLandscape();
+        if (landscape) {
+            positionHud(speedHudContainer, 112, 112,
+                    Gravity.BOTTOM | Gravity.END, 0, 0, 12, 10);
+            positionHud(cameraHudMiniMap, 126, 126,
+                    Gravity.BOTTOM | Gravity.START, 12, 0, 0, 12);
+            positionHud(distanceHud, 168, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.START, 12, 70, 0, 0);
+            positionHud(aiDecisionPanel, 390, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 64);
+            positionHud(quickControlStack, 50, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.START, 12, 136, 0, 0);
+            positionHud(assistantActionButton, 56, 56,
+                    Gravity.BOTTOM | Gravity.END, 0, 0, 12, 128);
+            positionHud(driveViewSwitchButton, 150, 44,
+                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 12);
+            positionHud(soundToggleButton, 48, 48,
+                    Gravity.TOP | Gravity.END, 0, 12, 12, 0);
+            positionHud(audioModeBadge, 54, 18,
+                    Gravity.TOP | Gravity.END, 0, 62, 9, 0);
+            positionHud(mapZoomControls, 48, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_VERTICAL | Gravity.END, 0, 0, 72, 0);
+            positionHud(navigationPanel, 480, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 64, 0, 0);
+            positionHud(roadAlertBanner, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0);
+            roadAlertBanner.setMaxWidth(dp(430));
+        } else {
+            positionHud(speedHudContainer, 104, 104,
+                    Gravity.BOTTOM | Gravity.END, 0, 0, 8, 72);
+            positionHud(cameraHudMiniMap, 112, 112,
+                    Gravity.BOTTOM | Gravity.START, 10, 0, 0, 126);
+            positionHud(distanceHud, 138, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.START, 10, 66, 0, 0);
+            positionHud(aiDecisionPanel, 158, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.END, 0, 194, 10, 0);
+            positionHud(quickControlStack, 50, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM | Gravity.START, 12, 0, 0, 12);
+            positionHud(assistantActionButton, 56, 56,
+                    Gravity.BOTTOM | Gravity.END, 0, 0, 12, 12);
+            positionHud(driveViewSwitchButton, 132, 48,
+                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 14);
+            positionHud(soundToggleButton, 48, 48,
+                    Gravity.TOP | Gravity.END, 0, 12, 12, 0);
+            positionHud(audioModeBadge, 62, 20,
+                    Gravity.TOP | Gravity.END, 0, 64, 5, 0);
+            positionHud(mapZoomControls, 48, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_VERTICAL | Gravity.END, 0, 0, 12, 0);
+            positionHud(navigationPanel, FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP, 14, 90, 14, 0);
+            positionHud(roadAlertBanner, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 12, 0, 0);
+            roadAlertBanner.setMaxWidth(dp(300));
+        }
+    }
+
+    private void positionHud(
+            View view, int widthDp, int heightDp, int gravity,
+            int startDp, int topDp, int endDp, int bottomDp) {
+        if (view == null || !(view.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams layout = (FrameLayout.LayoutParams) view.getLayoutParams();
+        layout.width = widthDp < 0 ? widthDp : dp(widthDp);
+        layout.height = heightDp < 0 ? heightDp : dp(heightDp);
+        layout.gravity = gravity;
+        layout.leftMargin = dp(startDp);
+        layout.topMargin = dp(topDp);
+        layout.rightMargin = dp(endDp);
+        layout.bottomMargin = dp(bottomDp);
+        view.setLayoutParams(layout);
     }
 
     private void requestGpsPermission() {
@@ -2379,6 +2479,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lastLocation = location;
         if (location.hasBearing()) lastTravelBearing = location.getBearing();
         updateMapPosition(location);
+        refreshTrafficMapData(false);
         updateLandmarkHint(location);
         updateNavigationGuidance(location);
         if (!location.hasSpeed()) {
@@ -2567,9 +2668,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (landmarkStore == null || location == null) return;
         float heading = location.hasBearing() ? location.getBearing() : lastTravelBearing;
         LandmarkHint learnedHint = landmarkStore.findNearby(
-                location.getLatitude(), location.getLongitude(), heading, 160d);
-        currentLandmarkHint = learnedHint.isActive()
-                ? learnedHint : nearbyOsmHint(location, 180d);
+                location.getLatitude(), location.getLongitude(), heading,
+                EarlySignalAlertPolicy.PREFETCH_RADIUS_METERS);
+        LandmarkHint osmHint = nearbyOsmHint(
+                location, EarlySignalAlertPolicy.PREFETCH_RADIUS_METERS);
+        boolean osmEarlyLight = osmHint.expectsLight()
+                && EarlySignalAlertPolicy.shouldUseFarCameraScan(osmHint.distanceMeters);
+        currentLandmarkHint = osmEarlyLight && !learnedHint.expectsLight()
+                ? osmHint : learnedHint.isActive() ? learnedHint : osmHint;
         AiCoordinator engine = aiCoordinator;
         if (engine != null) engine.setLandmarkHint(currentLandmarkHint);
         CarTelemetryStore.updateLandmark(currentLandmarkHint);
@@ -2582,14 +2688,26 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         refreshRoadAlertBanner();
         updateLimitFromMapHint(currentLandmarkHint);
         long now = SystemClock.elapsedRealtime();
-        if (currentLandmarkHint.distanceMeters >= 20d
+        int approachSpeedKmh = currentSpeedKmh;
+        if (location.hasSpeed()) {
+            approachSpeedKmh = Math.max(approachSpeedKmh,
+                    Math.round(location.getSpeed() * 3.6f));
+        }
+        boolean earlySignal = currentLandmarkHint.expectsLight()
+                && EarlySignalAlertPolicy.shouldAnnouncePresence(
+                currentLandmarkHint.distanceMeters, approachSpeedKmh)
+                && (lastSignalSpeechAt == 0L || now - lastSignalSpeechAt >= 2_500L);
+        boolean standardAlert = !currentLandmarkHint.expectsLight()
+                && currentLandmarkHint.distanceMeters >= 20d
                 && currentLandmarkHint.distanceMeters <= 130d
-                && currentSpeedKmh >= 8
+                && approachSpeedKmh >= 8;
+        if ((earlySignal || standardAlert)
                 && (currentLandmarkHint.id != lastHintId
                 || now - lastHintSpeechAt >= 60_000L)) {
             String message = mapAlertSpeech(currentLandmarkHint);
             if (audioMode != AlertAudioMode.MUTE) {
-                speak(message, TextToSpeech.QUEUE_ADD);
+                speak(message, earlySignal
+                        ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD);
             }
             lastHintId = currentLandmarkHint.id;
             lastHintSpeechAt = now;
@@ -2597,7 +2715,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     }
 
     private String mapAlertSpeech(LandmarkHint hint) {
-        if (hint.expectsLight()) return "Sắp đến vị trí đèn giao thông";
+        if (hint.expectsLight()) return EarlySignalAlertPolicy.presenceSpeech();
         if (hint.isMapAlert()) {
             String lower = hint.label.toLowerCase(new Locale("vi", "VN"));
             if (lower.contains("camera")) return "Chú ý, sắp tới vị trí camera giao thông";
@@ -2626,9 +2744,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         List<NavigationDataService.TrafficFeature> features = mapFeatureStore.nearbyFeatures(
                 location.getLatitude(), location.getLongitude(), radiusMeters, 20);
         NavigationDataService.TrafficFeature best = null;
+        NavigationDataService.TrafficFeature earlyLight = null;
         double bestDistance = Double.POSITIVE_INFINITY;
         double bestScore = Double.POSITIVE_INFINITY;
+        double earlyLightDistance = Double.POSITIVE_INFINITY;
+        double earlyLightScore = Double.POSITIVE_INFINITY;
         float heading = location.hasBearing() ? location.getBearing() : lastTravelBearing;
+        boolean vehicleMoving = currentSpeedKmh >= 5
+                || (location.hasSpeed() && location.getSpeed() >= 1.4f);
         for (NavigationDataService.TrafficFeature feature : features) {
             double distance = GeoMath.distanceMeters(
                     location.getLatitude(), location.getLongitude(),
@@ -2637,13 +2760,26 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     location.getLatitude(), location.getLongitude(),
                     feature.latitude, feature.longitude);
             double directionDelta = GeoMath.headingDifference(heading, bearing);
-            if (currentSpeedKmh >= 5 && directionDelta > 85d) continue;
+            if (vehicleMoving && directionDelta > 85d) continue;
             double score = distance + directionDelta * .55d;
+            if (NavigationDataService.TrafficFeature.LIGHT.equals(feature.kind)
+                    && EarlySignalAlertPolicy.shouldUseFarCameraScan(distance)
+                    && directionDelta <= 55d
+                    && score < earlyLightScore) {
+                earlyLight = feature;
+                earlyLightDistance = distance;
+                earlyLightScore = score;
+            }
             if (score < bestScore) {
                 best = feature;
                 bestDistance = distance;
                 bestScore = score;
             }
+        }
+        // Trong vùng cảnh báo sớm, ưu tiên cụm đèn để AI phóng đúng vùng ảnh từ xa.
+        if (earlyLight != null) {
+            best = earlyLight;
+            bestDistance = earlyLightDistance;
         }
         if (best == null) return LandmarkHint.NONE;
         boolean light = NavigationDataService.TrafficFeature.LIGHT.equals(best.kind);
@@ -2895,6 +3031,17 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     public void onLowMemory() {
         super.onLowMemory();
         if (baseMapView != null) baseMapView.onLowMemory();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        applyMapVisibility();
+        if (lastLocation != null) {
+            lastMapCameraAt = 0L;
+            updateMapPosition(lastLocation);
+            updateCameraHudMiniMap();
+        }
     }
 
     @Override

@@ -240,9 +240,19 @@ public final class AiCoordinator implements AutoCloseable {
         boolean fullScene = false;
         RectF focus = lightTracker.focusRegion(
                 nowMs, frame.getWidth(), frame.getHeight());
+        boolean earlyLightScan = hint.expectsLight()
+                && EarlySignalAlertPolicy.shouldUseFarCameraScan(hint.distanceMeters);
         if (focus != null && pass % 4 != 3) {
             region = focus;
             lastVisionMode = "NHÌN TẬP TRUNG";
+        } else if (earlyLightScan && pass % 4 <= 1) {
+            // ROI hẹp được phóng lớn trước khi tới giao lộ, nhưng vẫn xen kẽ quét
+            // dải phía trước/toàn cảnh để không phụ thuộc tuyệt đối vào tọa độ OSM.
+            region = learnedRegion(frame, hint, .34f, .42f);
+            lastVisionMode = "PHÓNG ĐÈN 150 M";
+        } else if (earlyLightScan && pass % 4 == 2) {
+            region = nextLightTile(frame);
+            lastVisionMode = "QUÉT DẢI ĐÈN 150 M";
         } else if (hint.expectsLight() && pass % 4 != 3) {
             region = learnedRegion(frame, hint, .40f, .55f);
             lastVisionMode = "NHỚ VỊ TRÍ ĐÈN";
@@ -254,8 +264,11 @@ public final class AiCoordinator implements AutoCloseable {
             lastVisionMode = "QUÉT XA";
         }
 
+        float detectorThreshold = fullScene ? 0.16f
+                : earlyLightScan ? 0.10f
+                : hint.expectsLight() ? 0.11f : 0.12f;
         List<Detection> raw = sceneDetector.detect(
-                frame, region, fullScene ? 0.16f : 0.12f, sceneClasses, 30);
+                frame, region, detectorThreshold, sceneClasses, 30);
         List<Detection> lights = new ArrayList<>();
         List<Detection> roadObjects = new ArrayList<>();
         for (Detection detection : raw) {

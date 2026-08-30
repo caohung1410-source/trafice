@@ -23,6 +23,7 @@ required=(
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/DistanceWarningState.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/DistanceWarningPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/LeadVehicleDistanceEstimator.java"
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/VisionScanPolicy.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/YoloDetector.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/CarTelemetryStore.java"
   "$project_root/app/src/main/java/vn/bachphuc/trafficai/TrafficCarAppService.java"
@@ -95,7 +96,7 @@ grep -q "overpass-api" "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q "overpass.kumi.systems" "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
 grep -q "overpass.private.coffee" "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
 grep -q "roundForPublicMapQuery" "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
-grep -q "BIỂN RAW" "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
+grep -q "VisionScanPolicy.useSceneDetector" "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
 grep -q "signTrackId" "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiResult.java"
 grep -q 'android:id="@+id/settingsPanel"' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'android:visibility="gone"' "$project_root/app/src/main/res/layout/activity_main.xml"
@@ -107,7 +108,7 @@ grep -q 'switchToPhoneCamera' "$project_root/app/src/main/java/vn/bachphuc/traff
 grep -q 'rotatePhoneCameraButton' "$project_root/app/src/main/res/layout/activity_main.xml"
 grep -q 'CameraRotationPolicy.previewRotationDegrees' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 grep -q 'SpeedSignPolicy' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
-grep -q 'visionQualityText' "$project_root/app/src/main/res/layout/activity_main.xml"
+grep -q 'aiBadge.setVisibility(View.GONE)' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 grep -q 'RecognitionReliability.shouldApplySpeedLimit' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 grep -q 'highway\\"=\\"speed_camera' "$project_root/app/src/main/java/vn/bachphuc/trafficai/NavigationDataService.java"
 grep -q 'quickMenuOverlay' "$project_root/app/src/main/res/layout/activity_main.xml"
@@ -142,4 +143,19 @@ grep -q 'onConfigurationChanged' "$project_root/app/src/main/java/vn/bachphuc/tr
 grep -q 'android:screenOrientation="fullSensor"' "$project_root/app/src/main/AndroidManifest.xml"
 grep -q 'EarlySignalAlertPolicy.shouldAnnouncePresence' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"
 grep -q 'PHÓNG ĐÈN 150 M' "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
-echo "verify_project: PASS • TrafficAI 2.6.3 • Adaptive HUD & Early Signal"
+grep -q 'QUÉT HÀNH LANG XE TRƯỚC' "$project_root/app/src/main/java/vn/bachphuc/trafficai/AiCoordinator.java"
+if grep -q 'fps' "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"; then
+  echo "Không đạt: HUD không được hiển thị FPS xử lý AI" >&2
+  exit 1
+fi
+if grep -Eq 'Math\.round\(result\.(light|sign|hazard)Confidence \* 100f\)' \
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/MainActivity.java"; then
+  echo "Không đạt: HUD không được hiển thị phần trăm tin cậy AI" >&2
+  exit 1
+fi
+if grep -q 'detection.confidence \* 100f' \
+  "$project_root/app/src/main/java/vn/bachphuc/trafficai/DetectionOverlayView.java"; then
+  echo "Không đạt: nhãn overlay không được hiển thị phần trăm xử lý AI" >&2
+  exit 1
+fi
+echo "verify_project: PASS • TrafficAI 2.6.4 • Clean Vision HUD"

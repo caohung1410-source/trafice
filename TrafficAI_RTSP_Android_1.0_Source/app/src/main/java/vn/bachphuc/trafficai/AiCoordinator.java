@@ -11,9 +11,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Điều phối thị giác 2.5: fusion nhiều khung, phóng vùng biển xa và prior tọa độ/làn xe. */
+/** Điều phối thị giác 2.6.4: quét thích ứng, fusion nhiều khung và HUD chỉ hiện kết quả chắc. */
 public final class AiCoordinator implements AutoCloseable {
-    private static final long SIGN_OVERLAY_CACHE_MS = 1_900L;
     private static final int SIGN_GREEN_LIGHT_CLASS = 54;
     private static final int SIGN_RED_LIGHT_CLASS = 55;
     private static final String[] COCO_LABELS = {
@@ -42,8 +41,6 @@ public final class AiCoordinator implements AutoCloseable {
             new LeadVehicleDistanceEstimator();
     private final Set<Integer> sceneClasses = new HashSet<>();
 
-    private List<Detection> lastSigns = Collections.emptyList();
-    private long lastSignsAt;
     private int analysisPhase;
     private int scenePassCounter;
     private int signPassCounter;
@@ -71,15 +68,9 @@ public final class AiCoordinator implements AutoCloseable {
         List<Detection> overlay = new ArrayList<>();
         int phase = analysisPhase++;
         LandmarkHint hint = landmarkHint;
-        // Model biển VN cũng có lớp đèn đỏ/xanh. Khi chưa có hint, dành 2/3 lượt cho
-        // biển để giảm bỏ sót ở xa; COCO vẫn quét mỗi lượt thứ ba và tracker đọc màu
-        // trực tiếp trên mọi frame giữa hai lượt detector.
         boolean distancePriority = distanceWarningEnabled && vehicleSpeedKmh >= 45;
-        boolean scenePhase = distancePriority
-                ? phase % 2 == 0
-                : hint.expectsLight()
-                ? phase % 3 != 2
-                : hint.expectsSign() ? phase % 4 == 0 : phase % 3 == 0;
+        boolean scenePhase = VisionScanPolicy.useSceneDetector(
+                phase, distancePriority, hint.expectsLight(), hint.expectsSign());
         SignalObservation observed = observeTrackedLight(frame, nowMs);
         SignConsensusTracker.Stable stableSign;
         ForwardHazardAnalyzer.Result hazard = hazardAnalyzer.current(nowMs);
@@ -88,10 +79,10 @@ public final class AiCoordinator implements AutoCloseable {
 
         if (scenePhase) {
             try {
-                ScenePass scene = detectScenePass(frame, nowMs, hint);
+                ScenePass scene = detectScenePass(frame, nowMs, hint, distancePriority);
                 hazard = hazardAnalyzer.update(scene.roadObjects,
                         frame.getWidth(), frame.getHeight(), nowMs, scene.fullScene);
-                if (scene.fullScene) {
+                if (scene.fullScene || scene.roadFocused) {
                     distance = distanceEstimator.update(
                             distanceObservations(scene.roadObjects,
                                     frame.getWidth(), frame.getHeight()),
@@ -120,10 +111,6 @@ public final class AiCoordinator implements AutoCloseable {
             try {
                 SignPass signPass = detectSignsAtDistance(frame, hint, nowMs);
                 lastSignRawCount = signPass.signs.size();
-                if (!signPass.signs.isEmpty()) {
-                    lastSigns = signPass.signs;
-                    lastSignsAt = nowMs;
-                }
                 stableSign = signTracker.update(signPass.signs, nowMs);
                 if (signPass.signal != null
                         && (observed == null
@@ -142,43 +129,59 @@ public final class AiCoordinator implements AutoCloseable {
             }
         }
 
-        if (nowMs - lastSignsAt > SIGN_OVERLAY_CACHE_MS) {
-            lastSigns = Collections.emptyList();
-        }
-
         TrafficState observedState = observed == null
                 ? TrafficState.UNKNOWN : observed.state;
         float observedConfidence = observed == null ? 0f : observed.confidence;
         Integer observedCountdown = null;
         float countdownConfidence = 0f;
+        RectF observedCountdownBox = null;
         boolean targetLocked = lightTracker.isLocked(nowMs);
 
-        if (observed != null && observed.state != TrafficState.UNKNOWN) {
-            overlay.add(new Detection(
-                    observed.detection.box,
-                    observed.detection.classId,
-                    (targetLocked ? "KHÓA " : "THEO DÕI ") + observed.state.vi,
-                    observed.confidence,
-                    Detection.Kind.TRAFFIC_LIGHT));
-            if (targetLocked || observed.confidence >= 0.74f) {
-                SevenSegmentReader.Result digit = sevenSegmentReader.read(
-                        frame, observed.detection.box, observed.state);
-                observedCountdown = digit.value;
-                countdownConfidence = digit.confidence;
-                if (digit.box != null && digit.value != null) {
-                    overlay.add(new Detection(
-                            digit.box, digit.value, digit.value + " giây",
-                            digit.confidence, Detection.Kind.COUNTDOWN));
-                }
-            }
+        boolean candidateSignal = observed != null
+                && observed.state != TrafficState.UNKNOWN
+                && targetLocked
+                && RecognitionReliability.shouldAnnounceSignal(observed.confidence);
+        if (candidateSignal) {
+            SevenSegmentReader.Result digit = sevenSegmentReader.read(
+                    frame, observed.detection.box, observed.state);
+            observedCountdown = digit.value;
+            countdownConfidence = digit.confidence;
+            observedCountdownBox = digit.box;
         }
 
         CountdownTracker.Result countdown = countdownTracker.update(
                 observedState, observedConfidence,
                 observedCountdown, countdownConfidence, nowMs);
-        overlay.addAll(lastSigns);
-        overlay.addAll(hazard.detections);
-        if (distance.hasLeadVehicle && distance.observation != null) {
+        boolean confirmedSignal = observed != null
+                && targetLocked
+                && countdown.state != TrafficState.UNKNOWN
+                && RecognitionReliability.shouldAnnounceSignal(countdown.confidence);
+        if (confirmedSignal) {
+            overlay.add(new Detection(
+                    observed.detection.box,
+                    observed.detection.classId,
+                    "ĐÈN " + countdown.state.vi,
+                    countdown.confidence,
+                    Detection.Kind.TRAFFIC_LIGHT));
+            if (countdown.visibleNumber != null && observedCountdownBox != null) {
+                overlay.add(new Detection(
+                        observedCountdownBox,
+                        countdown.visibleNumber,
+                        countdown.visibleNumber + " giây",
+                        countdownConfidence,
+                        Detection.Kind.COUNTDOWN));
+            }
+        }
+        boolean signMapAgrees = stableSign != null && hint.expectsSign()
+                && RecognitionReliability.labelsAgree(
+                        stableSign.detection.label, hint.label);
+        if (stableSign != null && RecognitionReliability.shouldAnnounceSign(
+                stableSign.confidence, signMapAgrees)) {
+            overlay.add(stableSign.detection);
+        }
+        if (hazard.confidence >= .70f) overlay.addAll(hazard.detections);
+        if (distance.hasLeadVehicle && distance.observation != null
+                && distance.confirmations >= 3 && distance.confidence >= .50f) {
             LeadVehicleDistanceEstimator.Observation lead = distance.observation;
             String distanceLabel = distance.vehicleLabel + " TRƯỚC • "
                     + Math.round(distance.distanceMeters) + " m";
@@ -234,15 +237,24 @@ public final class AiCoordinator implements AutoCloseable {
     }
 
     private ScenePass detectScenePass(
-            Bitmap frame, long nowMs, LandmarkHint hint) throws Exception {
+            Bitmap frame, long nowMs, LandmarkHint hint,
+            boolean distancePriority) throws Exception {
         int pass = scenePassCounter++;
         RectF region = null;
         boolean fullScene = false;
+        boolean roadFocused = false;
         RectF focus = lightTracker.focusRegion(
                 nowMs, frame.getWidth(), frame.getHeight());
         boolean earlyLightScan = hint.expectsLight()
                 && EarlySignalAlertPolicy.shouldUseFarCameraScan(hint.distanceMeters);
-        if (focus != null && pass % 4 != 3) {
+        if (VisionScanPolicy.forceFullScene(pass, distancePriority)) {
+            fullScene = true;
+            lastVisionMode = "QUÉT TOÀN CẢNH";
+        } else if (distancePriority && pass % 3 == 1) {
+            region = forwardRoadRegion(frame);
+            roadFocused = true;
+            lastVisionMode = "QUÉT HÀNH LANG XE TRƯỚC";
+        } else if (focus != null) {
             region = focus;
             lastVisionMode = "NHÌN TẬP TRUNG";
         } else if (earlyLightScan && pass % 4 <= 1) {
@@ -250,15 +262,16 @@ public final class AiCoordinator implements AutoCloseable {
             // dải phía trước/toàn cảnh để không phụ thuộc tuyệt đối vào tọa độ OSM.
             region = learnedRegion(frame, hint, .34f, .42f);
             lastVisionMode = "PHÓNG ĐÈN 150 M";
-        } else if (earlyLightScan && pass % 4 == 2) {
+        } else if (earlyLightScan) {
             region = nextLightTile(frame);
             lastVisionMode = "QUÉT DẢI ĐÈN 150 M";
-        } else if (hint.expectsLight() && pass % 4 != 3) {
+        } else if (hint.expectsLight()) {
             region = learnedRegion(frame, hint, .40f, .55f);
             lastVisionMode = "NHỚ VỊ TRÍ ĐÈN";
-        } else if (pass % 2 == 0 || focus != null) {
-            fullScene = true;
-            lastVisionMode = "QUÉT TOÀN CẢNH";
+        } else if (distancePriority) {
+            region = forwardRoadRegion(frame);
+            roadFocused = true;
+            lastVisionMode = "QUÉT HÀNH LANG XE TRƯỚC";
         } else {
             region = nextLightTile(frame);
             lastVisionMode = "QUÉT XA";
@@ -266,7 +279,8 @@ public final class AiCoordinator implements AutoCloseable {
 
         float detectorThreshold = fullScene ? 0.16f
                 : earlyLightScan ? 0.10f
-                : hint.expectsLight() ? 0.11f : 0.12f;
+                : hint.expectsLight() ? 0.11f
+                : roadFocused ? 0.11f : 0.12f;
         List<Detection> raw = sceneDetector.detect(
                 frame, region, detectorThreshold, sceneClasses, 30);
         List<Detection> lights = new ArrayList<>();
@@ -275,7 +289,7 @@ public final class AiCoordinator implements AutoCloseable {
             if (detection.classId == 9) lights.add(detection);
             else roadObjects.add(detection);
         }
-        return new ScenePass(lights, roadObjects, fullScene);
+        return new ScenePass(lights, roadObjects, fullScene, roadFocused);
     }
 
     private SignalObservation observeTrackedLight(Bitmap frame, long nowMs) {
@@ -296,12 +310,17 @@ public final class AiCoordinator implements AutoCloseable {
         RectF focus = signTracker.focusRegion(
                 nowMs, frame.getWidth(), frame.getHeight());
         RectF tile;
-        if (focus != null && pass % 3 != 2) {
+        boolean farBand = false;
+        if (focus != null && pass % 4 <= 1) {
             tile = focus;
             lastVisionMode = "PHÓNG BIỂN Ở XA";
-        } else if (hint.expectsSign() && pass % 3 != 2) {
+        } else if (hint.expectsSign() && pass % 4 <= 1) {
             tile = learnedRegion(frame, hint, .40f, .54f);
             lastVisionMode = "ĐỐI CHIẾU BIỂN ĐÃ NHỚ";
+        } else if (pass % 4 == 2) {
+            tile = farSignRegion(frame);
+            farBand = true;
+            lastVisionMode = "QUÉT DẢI BIỂN NHỎ";
         } else {
             tile = nextSignTile(frame);
             lastVisionMode = tile == null ? "BIỂN TOÀN CẢNH" : "QUÉT BIỂN XA";
@@ -309,7 +328,8 @@ public final class AiCoordinator implements AutoCloseable {
         List<Detection> raw = signDetector.detect(
                 frame, tile,
                 focus != null ? 0.12f
-                        : hint.expectsSign() ? 0.11f : tile == null ? 0.15f : 0.12f,
+                        : hint.expectsSign() ? 0.11f
+                        : farBand ? 0.11f : tile == null ? 0.15f : 0.12f,
                 null, 40);
         List<Detection> signs = new ArrayList<>();
         SignalCandidate signal = null;
@@ -369,6 +389,19 @@ public final class AiCoordinator implements AutoCloseable {
         }
         if (slot == -1) return new RectF(0, 0, width * 0.50f, height * 0.78f);
         return null;
+    }
+
+    private RectF forwardRoadRegion(Bitmap frame) {
+        float[] normalized = VisionScanPolicy.forwardRoadRegion();
+        return new RectF(
+                frame.getWidth() * normalized[0],
+                frame.getHeight() * normalized[1],
+                frame.getWidth() * normalized[2],
+                frame.getHeight() * normalized[3]);
+    }
+
+    private RectF farSignRegion(Bitmap frame) {
+        return new RectF(0f, 0f, frame.getWidth(), frame.getHeight() * .64f);
     }
 
     private List<LeadVehicleDistanceEstimator.Observation> distanceObservations(
@@ -469,8 +502,6 @@ public final class AiCoordinator implements AutoCloseable {
         lightTracker.reset();
         hazardAnalyzer.reset();
         distanceEstimator.reset();
-        lastSigns = Collections.emptyList();
-        lastSignsAt = 0L;
         analysisPhase = 0;
         scenePassCounter = 0;
         signPassCounter = 0;
@@ -514,11 +545,14 @@ public final class AiCoordinator implements AutoCloseable {
         final List<Detection> lights;
         final List<Detection> roadObjects;
         final boolean fullScene;
+        final boolean roadFocused;
 
-        ScenePass(List<Detection> lights, List<Detection> roadObjects, boolean fullScene) {
+        ScenePass(List<Detection> lights, List<Detection> roadObjects,
+                boolean fullScene, boolean roadFocused) {
             this.lights = lights;
             this.roadObjects = roadObjects;
             this.fullScene = fullScene;
+            this.roadFocused = roadFocused;
         }
     }
 

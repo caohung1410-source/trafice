@@ -236,8 +236,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
     private long lastDistanceSpeechAt;
     private DistanceWarningState lastDistanceWarningState =
             DistanceWarningState.SEARCHING;
-    private long lastAiResultAt;
-    private float smoothedAiFps;
     private AiResult lastDisplayedAiResult = AiResult.idle("Clean driving UI");
     private String transientRoadAlert = "";
     private long transientRoadAlertUntil;
@@ -345,12 +343,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         initPlayer();
         bindActions();
 
-        if (modelRepository.isReady()) {
-            setStatus("Model đã có trong máy • bấm TẢI / MỞ AI để khởi tạo");
-            modelProgress.setProgress(100);
-        } else {
-            setStatus("Giao diện sẵn sàng • AI đã đóng gói trong APK, lần đầu chỉ cần chép model");
-        }
+        setStatus("Ứng dụng sẵn sàng");
         CarTelemetryStore.updateConnection(false, false);
         restoreProviderSettings();
         restoreDistanceCalibration();
@@ -756,7 +749,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         if (announce) {
             String message = "Ưu tiên quan sát làn "
                     + lanePreference.vi.toLowerCase(new Locale("vi", "VN"));
-            setStatus(message + " • AI vẫn quét toàn cảnh định kỳ");
+            setStatus(message + " • vẫn kiểm tra toàn cảnh định kỳ");
             if (audioMode != AlertAudioMode.MUTE) speak(message, TextToSpeech.QUEUE_ADD);
         }
     }
@@ -782,7 +775,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                         + "Android Keystore trên điện thoại, không đồng bộ lên máy chủ.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsThemeRow).setOnClickListener(view -> Toast.makeText(this,
-                "TrafficAI 2.6.3 tự tối ưu HUD cho cả màn hình dọc và ngang.",
+                "TrafficAI 2.6.4 tự cân đối HUD cho cả màn hình dọc và ngang.",
                 Toast.LENGTH_LONG).show());
         findViewById(R.id.settingsAutoRow).setOnClickListener(view -> Toast.makeText(this,
                 "Android Auto cá nhân dùng dữ liệu cảnh báo và dẫn đường từ điện thoại.",
@@ -1184,7 +1177,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         OfflineTilePyramidRegionDefinition definition =
                 new OfflineTilePyramidRegionDefinition(
                         MAP_STYLE_URL, bounds, 8d, 15d, density, false);
-        String metadata = "{\"name\":\"TrafficAI 2.6.3 • "
+        String metadata = "{\"name\":\"TrafficAI 2.6.4 • "
                 + System.currentTimeMillis() + "\"}";
         offlineDownloadActive = true;
         downloadMapButton.setEnabled(false);
@@ -1454,7 +1447,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     cameraSourceBadge.setText("CAMERA: RTSP • ẢNH TRỰC TIẾP");
                     CarTelemetryStore.updateConnection(true, aiCoordinator != null);
                     setStatus("RTSP đã kết nối • mic camera đã tắt • video đang chạy"
-                            + (aiCoordinator == null ? " • AI chưa mở" : " • AI đang phân tích")
                             + (cameraProfileSaved ? " • cấu hình đã lưu"
                             : " • CẢNH BÁO: chưa lưu được cấu hình"));
                 } else if (state == Player.STATE_ENDED) {
@@ -1683,7 +1675,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                                 runOnUiThread(() -> {
                                     cameraSourceBadge.setText("CAMERA: ĐIỆN THOẠI • ẢNH TRỰC TIẾP");
                                     CarTelemetryStore.updateConnection(true, aiCoordinator != null);
-                                    setStatus("Camera sau đã mở • mic không được thu • AI quét biển nhạy cao");
+                                    setStatus("Camera sau đã mở • mic không được thu");
                                 });
                             } catch (CameraAccessException error) {
                                 runOnUiThread(() -> setStatus(
@@ -1858,11 +1850,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
 
     private void initializeAi() {
         if (aiCoordinator != null) {
-            setStatus("AI đã sẵn sàng");
+            setStatus("Hệ thống cảnh báo đã sẵn sàng");
             return;
         }
         if (aiInitializing) {
-            setStatus("AI đang được khởi tạo, vui lòng chờ");
             return;
         }
         aiInitializing = true;
@@ -1873,7 +1864,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 modelRepository.ensureModels((message, percent) -> runOnUiThread(() -> {
                     if (destroyed) return;
                     modelProgress.setProgress(percent);
-                    setStatus(message);
+                    modelProgress.setVisibility(View.GONE);
                 }));
                 String[] signLabels = modelRepository.loadSignLabels();
                 AiCoordinator ready = new AiCoordinator(
@@ -1904,7 +1895,8 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                     aiBadge.setText("AI: SẴN SÀNG");
                     initAiButton.setEnabled(true);
                     modelProgress.setProgress(100);
-                    setStatus("TrafficAI 2.6.3: Adaptive HUD • cảnh báo đèn sớm 150 m • làn "
+                    modelProgress.setVisibility(View.GONE);
+                    setStatus("Cảnh báo giao thông đã sẵn sàng • đèn sớm 150 m • làn "
                             + lanePreference.vi.toLowerCase(new Locale("vi", "VN")));
                 });
             } catch (Throwable error) {
@@ -1949,7 +1941,7 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 AiResult result = engine.analyze(frame, timestamp);
                 runOnUiThread(() -> applyAiResult(result));
             } catch (Throwable error) {
-                runOnUiThread(() -> aiBadge.setText("AI: LỖI FRAME"));
+                // Lỗi từng frame được giữ nội bộ; HUD lái xe không hiển thị log xử lý AI.
             } finally {
                 frameBusy.set(false);
             }
@@ -1963,54 +1955,19 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         updateLimitFromSign(result);
         recordLandmarkResult(result);
         overlayView.setResult(result, CAPTURE_WIDTH, CAPTURE_HEIGHT);
-        long now = SystemClock.elapsedRealtime();
-        if (lastAiResultAt > 0L) {
-            float instantFps = 1_000f / Math.max(1f, now - lastAiResultAt);
-            smoothedAiFps = smoothedAiFps == 0f
-                    ? instantFps : smoothedAiFps * 0.72f + instantFps * 0.28f;
-        }
-        lastAiResultAt = now;
-        aiBadge.setText("ADAS 2.6.3 • EARLY SIGNAL • " + result.engineStatus + " • "
-                + String.format(Locale.US, "%.1f fps", smoothedAiFps)
-                + (currentLandmarkHint.isActive() ? " • NHỚ "
-                + Math.round(currentLandmarkHint.distanceMeters) + "m" : ""));
-
         boolean mapAgrees = mapAgreesWithSign(result.signText);
-        int qualityScore = RecognitionReliability.qualityScore(
-                result.lightConfidence,
-                result.signConfidence,
-                result.targetLocked,
-                result.countdown != null,
-                result.inferenceMs);
-        RecognitionReliability.Level qualityLevel =
-                RecognitionReliability.qualityLevel(qualityScore);
-        String qualityLabel = qualityLevel == RecognitionReliability.Level.CONFIRMED
-                ? "AI ĐÃ XÁC NHẬN"
-                : qualityLevel == RecognitionReliability.Level.VERIFYING
-                ? "AI ĐANG ĐỐI CHIẾU" : "AI ĐANG QUÉT";
-        if (mapAgrees) qualityLabel += " • KHỚP MAP";
-        visionQualityText.setText(qualityLabel + " • " + qualityScore + "%");
-        int qualityColor = qualityLevel == RecognitionReliability.Level.CONFIRMED
-                ? Color.rgb(21, 111, 81)
-                : qualityLevel == RecognitionReliability.Level.VERIFYING
-                ? Color.rgb(151, 108, 24) : Color.rgb(27, 67, 99);
-        visionQualityText.setBackgroundTintList(ColorStateList.valueOf(qualityColor));
-
         String light = result.lightState == TrafficState.UNKNOWN
-                ? "ĐÈN\nCHƯA CHẮC"
-                : "ĐÈN\n" + result.lightState.vi + " "
-                + Math.round(result.lightConfidence * 100f) + "%";
+                ? "ĐÈN\n—"
+                : "ĐÈN\n" + result.lightState.vi;
         lightResult.setText(light);
         countdownResult.setText(result.countdown == null
                 ? "GIÂY\n—" : "GIÂY\n" + result.countdown);
         signResult.setText(result.signText.isEmpty()
                 ? "BIỂN BÁO\n—"
-                : "BIỂN BÁO\n" + result.signText + " "
-                + Math.round(result.signConfidence * 100f) + "%");
+                : "BIỂN BÁO\n" + result.signText);
         hazardResult.setText(result.hazardText.isEmpty()
-                ? "PHÍA TRƯỚC\nĐANG QUAN SÁT"
-                : "CẢNH BÁO\n" + result.hazardText + " "
-                + Math.round(result.hazardConfidence * 100f) + "%");
+                ? "PHÍA TRƯỚC\n—"
+                : "CẢNH BÁO\n" + result.hazardText);
         boolean showLight = result.lightState != TrafficState.UNKNOWN
                 && RecognitionReliability.shouldAnnounceSignal(result.lightConfidence);
         boolean showCountdown = showLight && result.countdown != null;
@@ -2278,9 +2235,10 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         cameraPreviewFrame.setLayoutParams(cameraLayout);
         updateCameraSurfaceVisibility();
         overlayView.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
-        aiBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
-        visionQualityText.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
-        cameraSourceBadge.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
+        // Thông tin kỹ thuật (model, FPS, trạng thái quét, nguồn frame) chỉ dùng nội bộ.
+        aiBadge.setVisibility(View.GONE);
+        visionQualityText.setVisibility(View.GONE);
+        cameraSourceBadge.setVisibility(View.GONE);
         cameraPreviewLabel.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
         cameraHudMiniMap.setVisibility(mapVisible ? View.GONE : View.VISIBLE);
         mapZoomControls.setVisibility(mapVisible ? View.VISIBLE : View.GONE);
@@ -2339,13 +2297,14 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
             roadAlertBanner.setMaxWidth(dp(430));
         } else {
             positionHud(speedHudContainer, 104, 104,
-                    Gravity.BOTTOM | Gravity.END, 0, 0, 8, 72);
+                    Gravity.BOTTOM | Gravity.END, 0, 0, 10, 166);
             positionHud(cameraHudMiniMap, 112, 112,
-                    Gravity.BOTTOM | Gravity.START, 10, 0, 0, 126);
-            positionHud(distanceHud, 138, FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP | Gravity.START, 10, 66, 0, 0);
-            positionHud(aiDecisionPanel, 158, FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP | Gravity.END, 0, 194, 10, 0);
+                    Gravity.BOTTOM | Gravity.START, 10, 0, 0, 166);
+            positionHud(distanceHud, 152, FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.START, 10, 64, 0, 0);
+            positionHud(aiDecisionPanel, FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM, 10, 0, 10, 76);
             positionHud(quickControlStack, 50, FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM | Gravity.START, 12, 0, 0, 12);
             positionHud(assistantActionButton, 56, 56,
@@ -2815,18 +2774,15 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
                 && label.equals(lastAppliedSpeedSignLabel)) return;
         lastAppliedSpeedSignTrackId = result.signTrackId;
         lastAppliedSpeedSignLabel = label;
-        int confidence = Math.round(result.signConfidence * 100f);
         if (parsed.endsLimit) {
             if (speedLimitKmh > 0) {
-                setSpeedLimit(0, "Biển AI hết hạn chế " + confidence + "%");
-                showTransientRoadAlert(
-                        "HẾT GIỚI HẠN TỐC ĐỘ • BIỂN AI " + confidence + "%", 4_000L);
+                setSpeedLimit(0, "Biển báo hết hạn chế");
+                showTransientRoadAlert("HẾT GIỚI HẠN TỐC ĐỘ", 4_000L);
             }
             return;
         }
-        setSpeedLimit(parsed.limitKmh, "Biển báo AI " + confidence + "%");
-        showTransientRoadAlert("GIỚI HẠN " + parsed.limitKmh
-                + " • BIỂN AI " + confidence + "%", 4_000L);
+        setSpeedLimit(parsed.limitKmh, "Biển báo đã xác nhận");
+        showTransientRoadAlert("GIỚI HẠN " + parsed.limitKmh, 4_000L);
     }
 
     private void setSpeedLimit(int value, String source) {
@@ -2870,9 +2826,9 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         transientRoadAlert = "";
         transientRoadAlertUntil = 0L;
         roadAlertBanner.setVisibility(View.GONE);
-        visionQualityText.setText("AI ĐANG QUÉT • 0%");
-        visionQualityText.setBackgroundTintList(
-                ColorStateList.valueOf(Color.rgb(27, 67, 99)));
+        aiBadge.setVisibility(View.GONE);
+        visionQualityText.setVisibility(View.GONE);
+        cameraSourceBadge.setVisibility(View.GONE);
         lightResult.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(25, 49, 69)));
         countdownResult.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(25, 49, 69)));
         signResult.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(25, 49, 69)));
@@ -2888,8 +2844,6 @@ public final class MainActivity extends Activity implements TextToSpeech.OnInitL
         lastDistanceWarningState = DistanceWarningState.SEARCHING;
         lastDistanceSpeechAt = 0L;
         updateDistanceHud(AiResult.idle("Đang tìm xe phía trước"));
-        lastAiResultAt = 0L;
-        smoothedAiFps = 0f;
     }
 
     private void startFramePump() {

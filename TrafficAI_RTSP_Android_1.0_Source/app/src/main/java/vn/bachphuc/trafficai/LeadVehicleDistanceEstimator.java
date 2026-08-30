@@ -45,7 +45,7 @@ public final class LeadVehicleDistanceEstimator {
             return last;
         }
 
-        boolean continues = tracked != null && affinity(tracked, selected) >= .30f;
+        boolean continues = tracked != null && affinity(tracked, selected) >= .24f;
         if (!continues) {
             tracked = selected;
             smoothedDistance = rawDistance;
@@ -121,19 +121,22 @@ public final class LeadVehicleDistanceEstimator {
         Observation best = null;
         double bestScore = -Double.MAX_VALUE;
         for (Observation value : observations) {
-            if (value == null || !isRoadVehicle(value.classId) || value.confidence < .20f) continue;
+            if (value == null || !isRoadVehicle(value.classId) || value.confidence < .17f) continue;
             double distance = estimateDistanceMeters(value.bottom);
             if (!Double.isFinite(distance)) continue;
             float corridor = corridorEvidence(value.centerX(), value.bottom);
-            if (corridor < .42f) continue;
             double continuity = tracked == null ? 0d : affinity(tracked, value);
+            // Khóa ban đầu vẫn nghiêm theo tâm làn. Khi đã có track ổn định, cho phép
+            // xe trước dịch nhẹ sang trái/phải ở đoạn cong mà không nhảy sang xe bên cạnh.
+            float minimumCorridor = continuity >= .30d ? .28f : .42f;
+            if (corridor < minimumCorridor) continue;
             double nearEvidence = 1d - clamp(distance / MAX_DISTANCE_METERS, 0d, 1d);
             double bottomWidth = clamp(value.width() / Math.max(.05d, value.bottom - calibration.horizonRatio), 0d, 1d);
             double score = value.confidence * .26d
-                    + corridor * .34d
+                    + corridor * .30d
                     + nearEvidence * .15d
                     + bottomWidth * .07d
-                    + continuity * .18d;
+                    + continuity * .22d;
             if (tracked != null && continuity < .08d) score -= .10d;
             if (score > bestScore) {
                 bestScore = score;

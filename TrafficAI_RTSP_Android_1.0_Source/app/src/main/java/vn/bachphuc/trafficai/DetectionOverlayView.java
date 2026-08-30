@@ -141,8 +141,7 @@ public final class DetectionOverlayView extends View {
             }
             return label.toString();
         }
-        return detection.label + " "
-                + String.format(Locale.US, "%.0f%%", detection.confidence * 100f);
+        return detection.label;
     }
 
     private float dp(float value) {

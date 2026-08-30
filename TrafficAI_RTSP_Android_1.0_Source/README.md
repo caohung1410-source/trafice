@@ -1,6 +1,15 @@
-# TrafficAI Drive 2.6.0 • Distance Warning Beta ARM64
+# TrafficAI Drive 2.6.4 • Clean Vision HUD ARM64
 
 Ứng dụng Android nhận luồng RTSP, nhận diện biển báo giao thông Việt Nam, nhận màu đèn tín hiệu, đọc số LED đếm ngược và quan sát xe/người trong hành lang chạy phía trước. Dự án được thiết kế trước hết cho Samsung S23 Ultra + IMOU IPC-C22E-A, đồng thời cho phép nhập URL của camera RTSP H.264 khác.
+
+## Bản 2.6.4: HUD sạch và nhận diện thích ứng
+
+- Cân lại bố cục dọc/ngang: kết quả đèn, số giây, biển và cảnh báo nằm thành một dải gọn phía dưới; đồng hồ tốc độ và bản đồ nhỏ không che kết quả.
+- Ẩn toàn bộ FPS, thời gian suy luận, trạng thái quét/đối chiếu, số track và phần trăm tin cậy khỏi màn hình lái xe.
+- Chỉ vẽ khung khi màu đèn đã đồng thuận nhiều khung, biển đã qua tracker hoặc xe trước đã đủ ba lần xác nhận; ứng viên thô tiếp tục được xử lý kín bên trong.
+- Lịch năm lượt thích ứng: trên đường nhanh dùng ba lượt cho đèn/xe trước và hai lượt cho model biển Việt Nam; gần giao lộ vẫn giữ hai lượt đọc biển.
+- Bổ sung vùng phóng toàn dải phía trên cho biển nhỏ ở xa và vùng trung tâm-phía dưới cho ô tô cùng làn; bắt buộc xen kẽ quét toàn cảnh.
+- Xe trước điểm thấp có thể được theo dõi sớm nhưng chưa phát cảnh báo; track đã ổn định được phép dịch nhẹ khi đường cong mà không nhảy ngay sang xe bên cạnh.
 
 ## Bản 2.6.0: cảnh báo khoảng cách xe phía trước
 
@@ -47,7 +56,7 @@
 - Map Memory/OSM chỉ giảm ngưỡng khi nhãn biển AI thật sự trùng nhãn đã biết; prior vị trí không được tự biến một phát hiện yếu thành phát hiện mạnh.
 - Phân tích màu đèn bổ sung điểm tập trung không gian của cụm LED, giảm nhầm màu nền/quảng cáo nằm trong hộp detector.
 
-Không có hệ thống camera đơn nào chính xác tuyệt đối trong mọi góc nhìn, mưa, chói sáng hoặc biển bị che. Số phần trăm trên HUD là độ ổn định của bằng chứng nhiều khung, không phải cam kết xác suất đúng tuyệt đối. Muốn công bố độ chính xác cần đo trên tập video độc lập từ chính camera và tuyến đường sử dụng.
+Không có hệ thống camera đơn nào chính xác tuyệt đối trong mọi góc nhìn, mưa, chói sáng hoặc biển bị che. Bản 2.6.4 không hiển thị phần trăm kỹ thuật trên HUD; muốn công bố độ chính xác vẫn phải đo trên tập video độc lập từ chính camera và tuyến đường sử dụng.
 
 ## Bản 2.3.2: sửa chiều camera điện thoại
 

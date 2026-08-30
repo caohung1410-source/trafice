@@ -19,6 +19,7 @@ import vn.bachphuc.trafficai.SignDecisionPolicy;
 import vn.bachphuc.trafficai.SignTrackMath;
 import vn.bachphuc.trafficai.SpeedSignPolicy;
 import vn.bachphuc.trafficai.TrafficState;
+import vn.bachphuc.trafficai.VisionScanPolicy;
 
 import java.util.Arrays;
 
@@ -115,6 +116,20 @@ public final class PureLogicSelfTest {
         require(Double.isFinite(stableDistance.headwaySeconds)
                         && stableDistance.headwaySeconds > 1d,
                 "Khi có GPS phải tính được thời gian bám xe");
+        LeadVehicleDistanceEstimator.Result curvedLaneDistance = estimator.update(
+                Arrays.asList(new LeadVehicleDistanceEstimator.Observation(
+                        .47f, .33f, .65f, .475f, 2, .84f)), 100, 11_500L);
+        require(curvedLaneDistance.hasLeadVehicle
+                        && curvedLaneDistance.confirmations >= 4,
+                "Track đã khóa phải giữ xe trước khi tâm xe dịch nhẹ ở đoạn đường cong");
+        LeadVehicleDistanceEstimator farEstimator = new LeadVehicleDistanceEstimator();
+        farEstimator.configure(true, LeadVehicleDistanceEstimator.Calibration.defaults());
+        LeadVehicleDistanceEstimator.Result sensitiveFarVehicle = farEstimator.update(
+                Arrays.asList(new LeadVehicleDistanceEstimator.Observation(
+                        .46f, .36f, .54f, .455f, 2, .18f)), 100, 20_000L);
+        require(sensitiveFarVehicle.hasLeadVehicle
+                        && sensitiveFarVehicle.state == DistanceWarningState.TRACKING,
+                "Xe xa điểm thấp phải được theo dõi nhưng chưa được phát cảnh báo sớm");
 
         require(CameraRotationPolicy.previewRotationDegrees(0) == 0f,
                 "Màn hình dọc không được tự xoay thêm 90 độ");
@@ -246,6 +261,42 @@ public final class PureLogicSelfTest {
                 "Cụm đèn giữa ảnh phải phù hợp hơn khi chọn làn giữa");
         require(LanePreference.fromStored("không hợp lệ") == LanePreference.CENTER,
                 "Làn lưu sai phải quay về làn giữa an toàn");
+
+        int highwayScenePasses = 0;
+        int highwaySignPasses = 0;
+        for (int phase = 0; phase < 5; phase++) {
+            if (VisionScanPolicy.useSceneDetector(phase, true, false, false)) {
+                highwayScenePasses++;
+            } else {
+                highwaySignPasses++;
+            }
+        }
+        require(highwayScenePasses == 3 && highwaySignPasses == 2,
+                "Cao tốc phải dành ba lượt cho xe/đèn và vẫn giữ hai lượt đọc biển");
+        int normalScenePasses = 0;
+        for (int phase = 0; phase < 5; phase++) {
+            if (VisionScanPolicy.useSceneDetector(phase, false, false, false)) {
+                normalScenePasses++;
+            }
+        }
+        require(normalScenePasses == 2,
+                "Chạy thường phải giữ ba lượt model biển và hai lượt cảnh phía trước");
+        int lightScenePasses = 0;
+        for (int phase = 0; phase < 5; phase++) {
+            if (VisionScanPolicy.useSceneDetector(phase, false, true, false)) {
+                lightScenePasses++;
+            }
+        }
+        require(lightScenePasses == 3,
+                "Gần giao lộ phải tăng quét đèn nhưng không được bỏ model biển Việt Nam");
+        require(VisionScanPolicy.forceFullScene(2, true)
+                        && !VisionScanPolicy.forceFullScene(1, true)
+                        && VisionScanPolicy.forceFullScene(3, false),
+                "ROI phải xen kẽ quét toàn cảnh theo đúng chu kỳ");
+        float[] roadRoi = VisionScanPolicy.forwardRoadRegion();
+        require(roadRoi[0] < .20f && roadRoi[2] > .80f
+                        && roadRoi[1] < .30f && roadRoi[3] == 1f,
+                "ROI khoảng cách phải phủ hành lang trung tâm đến đáy ảnh");
 
         require(GeoMath.distanceMeters(13.97609, 108.00695,
                 13.97609, 108.00695) < .01d, "Cùng tọa độ phải có khoảng cách bằng 0");

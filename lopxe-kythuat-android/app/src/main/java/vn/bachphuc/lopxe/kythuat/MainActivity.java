@@ -106,8 +106,8 @@ public class MainActivity extends Activity {
             if (raw.length == 4) {
                 String prefix = (raw[0] & 255) + "." + (raw[1] & 255) + "." + (raw[2] & 255) + ".";
                 for (int host : new int[]{1, 2, 10, 100, 200, 254}) {
-                    urls.add("http://" + prefix + host);
-                    urls.add("http://" + prefix + host + ":8080");
+                    urls.add("https://" + prefix + host);
+                    urls.add("https://" + prefix + host + ":8443");
                 }
             }
         }
@@ -129,8 +129,8 @@ public class MainActivity extends Activity {
     private void showManualDialog() {
         EditText input = new EditText(this);
         input.setSingleLine(true);
-        input.setHint("Ví dụ: http://192.168.1.10:8080");
-        input.setText(prefs().getString(KEY_SERVER, "http://"));
+        input.setHint("Ví dụ: https://192.168.1.10:8443");
+        input.setText(prefs().getString(KEY_SERVER, "https://"));
         int pad = (int) (24 * getResources().getDisplayMetrics().density);
         new AlertDialog.Builder(this)
                 .setTitle("Cấu hình máy chủ thủ công")
@@ -159,8 +159,8 @@ public class MainActivity extends Activity {
 
     private String normalize(String raw) {
         String value = raw == null ? "" : raw.trim();
-        if (value.isEmpty() || value.equals("http://")) return "";
-        if (!value.startsWith("http://") && !value.startsWith("https://")) value = "http://" + value;
+        if (value.isEmpty() || value.equals("http://") || value.equals("https://")) return "";
+        if (!value.startsWith("http://") && !value.startsWith("https://")) value = "https://" + value;
         while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
         return value;
     }

@@ -6,7 +6,12 @@ on:
     branches: [lopxe-kythuat-android]
     paths:
       - "lopxe-kythuat-android/**"
-      - ".github/workflows/build-apk.yml"
+      - ".github/workflows/build-lopxe-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "lopxe-kythuat-android/**"
+      - ".github/workflows/build-lopxe-apk.yml"
 
 jobs:
   build:

@@ -1,0 +1,44 @@
+name: Build Lop Xe Server 1.1.2 TorchVision Fix
+
+on:
+  push:
+    branches: [lopxe-server-torchvision-fix]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract prior server source
+        shell: pwsh
+        run: |
+          Expand-Archive -Path lopxe-server-autostart-source.zip -DestinationPath $env:RUNNER_TEMP\lopxe -Force
+          Move-Item $env:RUNNER_TEMP\lopxe\build-input\lopxe2\lopxe $env:GITHUB_WORKSPACE\lopxe-local-server
+      - name: Patch bundled TorchVision runtime
+        shell: pwsh
+        run: |
+          $build = "$env:GITHUB_WORKSPACE\lopxe-local-server\build-windows.ps1"
+          $text = Get-Content $build -Raw
+          $text = $text.Replace("python -m pip install --upgrade pip", "python -m pip install --upgrade pip`r`npython -m pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu")
+          $text = $text.Replace("--collect-all cv2 --hidden-import multipart --hidden-import google.oauth2.service_account launcher.py", "--collect-all cv2 --collect-all torch --collect-all torchvision --hidden-import torchvision._C --hidden-import multipart --hidden-import google.oauth2.service_account launcher.py")
+          Set-Content -Path $build -Value $text -Encoding UTF8
+          $iss = "$env:GITHUB_WORKSPACE\lopxe-local-server\installer\LopXeServer.iss"
+          (Get-Content $iss -Raw).Replace("1.1.0", "1.1.2") | Set-Content -Path $iss -Encoding UTF8
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Build installer
+        shell: pwsh
+        run: .\lopxe-local-server\build-windows.ps1
+      - name: Upload fixed installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LopXe_Server_Setup_1.1.2
+          path: lopxe-local-server\installer\output\LopXe_Server_Setup_1.1.2.exe
+          if-no-files-found: error
+          retention-days: 30

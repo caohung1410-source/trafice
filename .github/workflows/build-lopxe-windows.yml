@@ -1,0 +1,62 @@
+name: Build Lop Xe Windows Installers
+
+on:
+  push:
+    branches:
+      - lopxe-windows-installers
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "lopxe-windows-source.zip"
+      - ".github/workflows/build-lopxe-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Expand source package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path lopxe-windows | Out-Null
+          Expand-Archive -Path lopxe-windows-source.zip -DestinationPath lopxe-windows -Force
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: lopxe-windows/local-ai-agent/requirements.txt
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build installers
+        shell: pwsh
+        run: ./lopxe-windows/windows-packaging/build-windows.ps1
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lop-Xe-Windows-Installers-1.4.1
+          path: |
+            lopxe-windows/windows-packaging/output/LopXe_Server_Setup_1.4.1.exe
+            lopxe-windows/windows-packaging/output/LopXe_Client_Setup_1.4.1.exe
+            lopxe-windows/windows-packaging/output/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

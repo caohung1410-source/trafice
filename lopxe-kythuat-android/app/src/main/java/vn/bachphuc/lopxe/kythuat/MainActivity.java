@@ -17,6 +17,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -132,10 +133,15 @@ public class MainActivity extends Activity {
         input.setHint("Ví dụ: https://192.168.1.10:8443");
         input.setText(prefs().getString(KEY_SERVER, "https://"));
         int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        LinearLayout field = new LinearLayout(this);
+        field.setPadding(pad, 0, pad, 0);
+        field.addView(input, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
         new AlertDialog.Builder(this)
                 .setTitle("Cấu hình máy chủ thủ công")
                 .setMessage("Nhập địa chỉ IP hoặc tên máy chủ trong Wi‑Fi cửa hàng")
-                .setView(input, pad, 0, pad, 0)
+                .setView(field)
                 .setNegativeButton("Hủy", null)
                 .setPositiveButton("Kiểm tra & lưu", (d, w) -> verifyManual(input.getText().toString()))
                 .show();

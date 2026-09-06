@@ -1,0 +1,52 @@
+name: Build APK Ky thuat Lop Xe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [lopxe-kythuat-android]
+    paths:
+      - "lopxe-kythuat-android/**"
+      - ".github/workflows/build-lopxe-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "lopxe-kythuat-android/**"
+      - ".github/workflows/build-lopxe-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Lay ma nguon
+        uses: actions/checkout@v4
+
+      - name: Cai Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cai Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cai Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Tao APK
+        working-directory: lopxe-kythuat-android
+        run: gradle --no-daemon assembleDebug
+
+      - name: Doi ten APK
+        run: cp lopxe-kythuat-android/app/build/outputs/apk/debug/app-debug.apk LopXe_KyThuat_1.0.0.apk
+
+      - name: Luu APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LopXe_KyThuat_1.0.0
+          path: LopXe_KyThuat_1.0.0.apk
+          if-no-files-found: error
+          retention-days: 30

@@ -4,11 +4,12 @@
 
 ## Kết nối
 
-- Tự động: thử `lopxe.local`, `lopxe-server.local`, cổng 80/8080 và các địa chỉ máy chủ thường dùng trong lớp mạng Wi‑Fi hiện tại.
-- Thủ công: nhấn **Cấu hình thủ công**, nhập `http://IP-MAY-CHU:CONG`, kiểm tra và lưu.
+- Tự động: thử `lopxe.local`, `lopxe-server.local` qua HTTP nội bộ; địa chỉ IP được kiểm tra bằng HTTPS cổng 443/8443.
+- Thủ công: nhấn **Cấu hình thủ công**, nhập `https://IP-MAY-CHU:CONG`, kiểm tra và lưu.
 - Nhấn giữ trên màn hình ứng dụng để mở lại cấu hình máy chủ.
 
 Máy chủ phải cung cấp ứng dụng tại `/` và API kiểm tra tại `/api/auth/me`.
+HTTP không mã hóa chỉ được cho phép với đúng hai tên nội bộ `lopxe.local` và `lopxe-server.local`.
 
 ## Đóng gói
 
